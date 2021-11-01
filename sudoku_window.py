@@ -49,15 +49,15 @@ class SudokuWindow(QMainWindow):
             "000000000"
             "000000000"
             "000000000"
-            "000040000"
             "000000000"
-            "000010000"
+            "000000000"
+            "000000000"
             "000000000"
             "000000000"
             "000000000"
         )
 
-        s = Sudoku.from_string(
+        """s = Sudoku.from_string(
             "006300000"
             "700000008"
             "000000090"
@@ -67,13 +67,12 @@ class SudokuWindow(QMainWindow):
             "000050000"
             "009001005"
             "000000600"
-        )
+        )"""
 
         s.diagonal_top_left = True
         s.diagonal_top_right = True
-        s.disjoint = True
 
-        """s.thermometers.append(Thermometer(s, [18, 9, 0, 1, 11, 19]))
+        s.thermometers.append(Thermometer(s, [18, 9, 0, 1, 11, 19]))
         s.thermometers.append(Thermometer(s, [54, 55, 64, 65]))
         s.thermometers.append(Thermometer(s, [64, 73]))
         s.thermometers.append(Thermometer(s, [78, 69, 60, 61, 62, 71, 80]))
@@ -85,10 +84,10 @@ class SudokuWindow(QMainWindow):
         s.cages.append(Cage([35, 44, 53], 15))
         s.cages.append(Cage([58, 67, 76], 24))
         s.cages.append(Cage([60, 69, 78], 15))
-        s.cages.append(Cage([62, 71, 80], 6))"""
+        s.cages.append(Cage([62, 71, 80], 6))
 
         self.board = SudokuBoard(self, s)
-        s.pencil_marks()
+        # s.pencil_marks()
 
         self.solve_btn.clicked.connect(self.board.solve_board)
         self.next_step_btn.clicked.connect(self.board.next_step)

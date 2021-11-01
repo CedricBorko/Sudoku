@@ -174,6 +174,10 @@ class Thermometer:
                 print(number, "TWICE ON THERMOMETER")
             return False
 
+        for cell in self.cells[0:index]:
+            if cell.value >= number:
+                return False
+
         ascending, cell = self.ascending(number, index)
 
         if not ascending:
