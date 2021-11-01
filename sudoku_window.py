@@ -69,8 +69,9 @@ class SudokuWindow(QMainWindow):
             "000000600"
         )"""
 
-        s.diagonal_top_left = True
-        s.diagonal_top_right = True
+        s.diagonal_top_left = False
+        s.diagonal_top_right = False
+        s.disjoint = False
 
         s.thermometers.append(Thermometer(s, [18, 9, 0, 1, 11, 19]))
         s.thermometers.append(Thermometer(s, [54, 55, 64, 65]))
@@ -79,15 +80,15 @@ class SudokuWindow(QMainWindow):
         s.thermometers.append(Thermometer(s, [32, 31, 40, 49, 48]))
         s.thermometers.append(Thermometer(s, [15, 7, 16, 25]))
 
-        s.cages.append(Cage([31, 40, 49], 12))
+        """s.cages.append(Cage([31, 40, 49], 12))
         s.cages.append(Cage([33, 42, 51], 24))
         s.cages.append(Cage([35, 44, 53], 15))
         s.cages.append(Cage([58, 67, 76], 24))
         s.cages.append(Cage([60, 69, 78], 15))
-        s.cages.append(Cage([62, 71, 80], 6))
+        s.cages.append(Cage([62, 71, 80], 6))"""
+        s.calculate_valid_numbers()
 
         self.board = SudokuBoard(self, s)
-        # s.pencil_marks()
 
         self.solve_btn.clicked.connect(self.board.solve_board)
         self.next_step_btn.clicked.connect(self.board.next_step)

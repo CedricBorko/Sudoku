@@ -20,10 +20,12 @@ class Cell:
     def __init__(self, index: int, value: int = 0):
         self.index = index
 
-        self.center = []
+        self.valid_numbers = []
         self.corner = []
         self.value = value
         self.color = None
+
+        self.impossible_numbers = []
 
         self.edge_id = [0, 0, 0, 0]
         self.edge_exists = [False, False, False, False]
@@ -121,8 +123,8 @@ def tile_to_poly(cells: List[Cell], cell_size: int, selected: Set, inner_offset:
         if north not in selected:
 
             if (cells[get_index(west)].edge_exists[NORTH]
-                and cells[get_index(p)].row == cells[
-                    get_index(west)].row):  # Don't connect to row above
+                    and cells[get_index(p)].row == cells[
+                        get_index(west)].row):  # Don't connect to row above
 
                 edges[cells[get_index(west)].edge_id[NORTH]].ex += cell_size
                 cells[i].edge_id[NORTH] = cells[get_index(west)].edge_id[NORTH]
@@ -176,8 +178,8 @@ def tile_to_poly(cells: List[Cell], cell_size: int, selected: Set, inner_offset:
 
         if south not in selected:
             if (cells[get_index(west)].edge_exists[SOUTH]
-                and cells[get_index(p)].row == cells[
-                    get_index(west)].row):  # Don't connect to row above
+                    and cells[get_index(p)].row == cells[
+                        get_index(west)].row):  # Don't connect to row above
 
                 edges[cells[get_index(west)].edge_id[SOUTH]].ex += cell_size
                 cells[i].edge_id[SOUTH] = cells[get_index(west)].edge_id[SOUTH]
@@ -222,15 +224,15 @@ class Sudoku:
     NUMBERS = (1, 2, 3, 4, 5, 6, 7, 8, 9)
 
     def __init__(
-        self,
-        board: List[Cell],
-        king_constraint: bool = False,
-        knight_constraint: bool = False,
-        orthogonal_consecutive_constraint: bool = False,
-        orthogonal_ration_2_to_1_constraint: bool = False,
-        diagonal_top_left: bool = False,
-        diagonal_top_right: bool = False,
-        disjoint: bool = False,
+            self,
+            board: List[Cell],
+            king_constraint: bool = False,
+            knight_constraint: bool = False,
+            orthogonal_consecutive_constraint: bool = False,
+            orthogonal_ration_2_to_1_constraint: bool = False,
+            diagonal_top_left: bool = False,
+            diagonal_top_right: bool = False,
+            disjoint: bool = False,
     ):
 
         self.initial_state = copy.deepcopy(board)
@@ -247,8 +249,8 @@ class Sudoku:
         self.diagonal_top_right = diagonal_top_right
         self.disjoint = disjoint
 
-        self.thermometers = []
-        self.cages = []
+        self.thermometers: List[Thermometer] = []
+        self.cages: List[Cage] = []
 
     @classmethod
     def from_file(cls):
@@ -293,10 +295,11 @@ class Sudoku:
         return [self.get_entire_column(i) for i in range(9)]
 
     def next_empty(self) -> Optional[int]:
-        for i in range(81):
-            if self.board[i].value not in self.NUMBERS:
-                return i
-        return None
+        cells = sorted([cell for cell in self.board if cell.value == 0], key=lambda c: len(c.valid_numbers))
+        if not cells:
+            return None
+
+        return cells[0].index
 
     def get_entire_row(self, index: int):
         row_start = index // 9 * 9
@@ -359,73 +362,93 @@ class Sudoku:
     def pencil_marks(self):
         for cell in self.board:
             if cell.value == 0:
-                cell.center = self.valid_numbers(cell.index)
+                cell.valid_numbers = self.valid_numbers(cell.index)
 
         for i, box in enumerate(self.boxes()):
-            possibilies = list(
-                itertools.chain.from_iterable([cell.center for cell in box if cell.value == 0]))
+            possibilities = list(
+                itertools.chain.from_iterable([cell.valid_numbers for cell in box if cell.value == 0]))
             number = None
             for n in self.NUMBERS:
-                if possibilies.count(n) == 1:
+                if possibilities.count(n) == 1:
                     number = n
                 if number:
                     for cell in box:
-                        if number in cell.center:
-                            cell.center = [number]
+                        if number in cell.valid_numbers:
+                            cell.valid_numbers = [number]
 
         for i, row in enumerate(self.rows()):
-            possibilies = list(
-                itertools.chain.from_iterable([cell.center for cell in row if cell.value == 0]))
+            possibilities = list(
+                itertools.chain.from_iterable([cell.valid_numbers for cell in row if cell.value == 0]))
             number = None
             for n in self.NUMBERS:
-                if possibilies.count(n) == 1:
+                if possibilities.count(n) == 1:
                     number = n
                 if number:
                     for cell in row:
-                        if number in cell.center:
-                            cell.center = [number]
+                        if number in cell.valid_numbers:
+                            cell.valid_numbers = [number]
 
         for i, col in enumerate(self.columns()):
-            possibilies = list(
-                itertools.chain.from_iterable([cell.center for cell in col if cell.value == 0]))
+            possibilities = list(
+                itertools.chain.from_iterable([cell.valid_numbers for cell in col if cell.value == 0]))
             number = None
             for n in self.NUMBERS:
-                if possibilies.count(n) == 1:
+                if possibilities.count(n) == 1:
                     number = n
                 if number:
                     for cell in col:
-                        if number in cell.center:
-                            cell.center = [number]
+                        if number in cell.valid_numbers:
+                            cell.valid_numbers = [number]
 
     def next_step(self):
-        self.pencil_marks()
 
-        valid_cells = sorted([cell for cell in self.board if cell.value == 0],
-                             key=lambda c: len(c.center))
+        self.calculate_valid_numbers()
 
-        for cell in valid_cells:
-            for number in cell.center:
-                cell.value = number
-                print(cell)
-                self.pencil_marks()
+        empty_cells = sorted([cell for cell in self.board if cell.value == 0], key=lambda c: len(c.valid_numbers))
 
-                if any([len(cell.center) == 0 for cell in valid_cells]):
-                    cell.value = 0
-                    cell.center.remove(number)
-                else:
-                    return cell.index
+        if not empty_cells:
+            # SOLVED
+            return None
+
+        best_cell = empty_cells[0]
+
+        for number in best_cell.valid_numbers:
+            best_cell.value = number
+
+            self.calculate_valid_numbers()
+
+            if any([len(cell.valid_numbers) == 0 for cell in empty_cells if cell != best_cell]):
+                best_cell.value = 0
+                best_cell.impossible_numbers.append(number)
+                continue
+
+        # RETURN INDEX TO SHOW CURRENT POSITION ON GRID
+        return best_cell.index
+
+    def calculate_valid_numbers(self):
+        for cell in self.board:
+            cell.valid_numbers = self.valid_numbers(cell.index)
 
     def solve(self):
 
-        self.next_step()
+        self.calculate_valid_numbers()
         index = self.next_empty()
 
         if index is None:
             print("DONE")
             return True
 
-        else:
-            self.solve()
+        cell = self.board[index]
+
+        for number in cell.valid_numbers:
+            cell.value = number
+
+            if self.solve():
+                return True
+
+            cell.value = 0
+
+        return False
 
     def valid(self, number: int, index: int, show_constraints: bool = False):
 
@@ -549,7 +572,7 @@ class Sudoku:
 
 
 if __name__ == '__main__':
-    from components import Thermometer
+    from components import Thermometer, Cage
 
     s = Sudoku.from_string(
         "001900003"

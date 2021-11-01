@@ -235,10 +235,10 @@ class SudokuBoard(QWidget):
                 painter.drawText(rect, Qt.AlignCenter, str(cell.value))
 
             else:
-                size = 10 if len(cell.center) <= 5 else 16 - len(cell.center)
+                size = 10 if len(cell.valid_numbers) <= 5 else 16 - len(cell.valid_numbers)
                 painter.setFont(QFont("Arial Black", size))
                 painter.setPen(QPen(QColor("#666666"), 1.0))
-                painter.drawText(rect, Qt.AlignCenter, ''.join(sorted(map(str, cell.center))))
+                painter.drawText(rect, Qt.AlignCenter, ''.join(sorted(map(str, cell.valid_numbers))))
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         self.setFocus()
@@ -318,11 +318,11 @@ class SudokuBoard(QWidget):
 
                     elif mode == CENTER:
 
-                        if str(event.key() - 48) in cell.center:
-                            cell.center.remove(str(event.key() - 48))
+                        if str(event.key() - 48) in cell.valid_numbers:
+                            cell.valid_numbers.remove(str(event.key() - 48))
 
                         else:
-                            cell.center.add(str(event.key() - 48))
+                            cell.valid_numbers.add(str(event.key() - 48))
 
 
                     else:

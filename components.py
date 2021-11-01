@@ -29,7 +29,8 @@ class Cage:
             return False
 
         if self.space_left(board) == 1 and number + sum_so_far < self.total:
-            print("USING", number, f"WOULD ONLY REACH {sum_so_far + number} NOT THE TOTAL ({self.total}) OF THIS CAGE")
+            if show_constraint:
+                print("USING", number, f"WOULD ONLY REACH {sum_so_far + number} NOT THE TOTAL ({self.total}) OF THIS CAGE")
             return False
 
         return True
