@@ -1,13 +1,15 @@
 import datetime
+import itertools
 from datetime import date
 
 from PySide6.QtCore import Qt, QTimer, QEvent
-from PySide6.QtGui import QCursor, QMouseEvent, QIcon, QResizeEvent, QEnterEvent
+from PySide6.QtGui import QCursor, QMouseEvent, QIcon, QResizeEvent, QEnterEvent, QPixmap
 from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QFrame, QLabel, QHBoxLayout, QPushButton, \
     QWidget, QSizeGrip, QComboBox
 
 from board import SudokuBoard
-from components import Sudoku
+from components import Thermometer, Cage
+from sudoku import Sudoku
 
 
 class SudokuWindow(QMainWindow):
@@ -19,7 +21,7 @@ class SudokuWindow(QMainWindow):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.statusBar().hide()
 
-        self.setFixedSize(1280, 720)
+        self.setFixedSize(770, 900)
 
         self.setStyleSheet(
             "QSizeGrip{border: none}"
@@ -40,29 +42,56 @@ class SudokuWindow(QMainWindow):
         self.mode_switch = QComboBox(self)
         self.mode_switch.addItems(["Normal", "Center", "Corner", "Color"])
 
-        self.undo = QPushButton(self)
-        self.undo.setIcon(QIcon("icons/rotate-ccw.svg"))
-        self.redo = QPushButton(self)
-        self.redo.setIcon(QIcon("icons/rotate-cw.svg"))
+        self.solve_btn = QPushButton("Solve")
+        self.next_step_btn = QPushButton("Next Step")
 
+        s = Sudoku.from_string(
+            "000000000"
+            "000000000"
+            "000000000"
+            "000040000"
+            "000000000"
+            "000010000"
+            "000000000"
+            "000000000"
+            "000000000"
+        )
 
-        self.board = SudokuBoard(self, Sudoku(
-            [
-                ["4", "?", "?", "?", "2", "9", "?", "8", "1"],
-                ["8", "?", "5", "?", "3", "1", "?", "?", "?"],
-                ["?", "?", "2", "?", "7", "?", "3", "5", "?"],
-                ["7", "4", "?", "9", "?", "?", "?", "?", "?"],
-                ["?", "?", "?", "?", "?", "8", "5", "7", "9"],
-                ["?", "?", "?", "6", "1", "7", "?", "?", "3"],
-                ["?", "?", "?", "?", "?", "?", "?", "1", "6"],
-                ["9", "7", "8", "?", "?", "?", "?", "?", "5"],
-                ["?", "?", "?", "2", "9", "5", "?", "?", "?"]
-            ],
-            empty_character="?"
-        ))
+        s = Sudoku.from_string(
+            "006300000"
+            "700000008"
+            "000000090"
+            "002000040"
+            "000000000"
+            "000000050"
+            "000050000"
+            "009001005"
+            "000000600"
+        )
 
-        self.undo.clicked.connect(self.board.undo)
-        self.redo.clicked.connect(self.board.redo)
+        s.diagonal_top_left = True
+        s.diagonal_top_right = True
+        s.disjoint = True
+
+        """s.thermometers.append(Thermometer(s, [18, 9, 0, 1, 11, 19]))
+        s.thermometers.append(Thermometer(s, [54, 55, 64, 65]))
+        s.thermometers.append(Thermometer(s, [64, 73]))
+        s.thermometers.append(Thermometer(s, [78, 69, 60, 61, 62, 71, 80]))
+        s.thermometers.append(Thermometer(s, [32, 31, 40, 49, 48]))
+        s.thermometers.append(Thermometer(s, [15, 7, 16, 25]))
+
+        s.cages.append(Cage([31, 40, 49], 12))
+        s.cages.append(Cage([33, 42, 51], 24))
+        s.cages.append(Cage([35, 44, 53], 15))
+        s.cages.append(Cage([58, 67, 76], 24))
+        s.cages.append(Cage([60, 69, 78], 15))
+        s.cages.append(Cage([62, 71, 80], 6))"""
+
+        self.board = SudokuBoard(self, s)
+        s.pencil_marks()
+
+        self.solve_btn.clicked.connect(self.board.solve_board)
+        self.next_step_btn.clicked.connect(self.board.next_step)
 
         self.central_layout = QVBoxLayout(self.central_frame)
         self.central_layout.setContentsMargins(0, 0, 0, 0)
@@ -74,10 +103,9 @@ class SudokuWindow(QMainWindow):
         self.central_layout.addWidget(self.mode_switch)
         self.central_layout.addSpacing(10)
 
-        self.central_layout.addWidget(self.undo)
+        self.central_layout.addWidget(self.solve_btn)
         self.central_layout.addSpacing(10)
-        self.central_layout.addWidget(self.redo)
-
+        self.central_layout.addWidget(self.next_step_btn)
 
         # Resizing
 

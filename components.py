@@ -1,19 +1,84 @@
-import time
-from typing import List, Tuple
+from typing import List, Tuple, Set
+
+from PySide6.QtCore import Qt, QPoint, QRect
+from PySide6.QtGui import QPainter, QBrush, QColor, QPen, QPolygon
+
+from sudoku import tile_to_poly, Cell
 
 
 class Cage:
-    def __init__(self, cells: List[Tuple[int, int]], total: int):
+    def __init__(self, cells: List[int], total: int):
         self.cells = cells
         self.total = total
 
-    def valid(self, board: List[List[str]]) -> bool:
-        s = 0
-        for cell in self.cells:
-            row, col = cell
-            s += int(board[row][col]) if board[row][col] != "?" else 0
+        self.inner_offset = 5
+        self.no_repeat = True
 
-        return s <= self.total
+    def valid(self, board: List[Cell], number: int, show_constraint: bool = False) -> bool:
+
+        sum_so_far = sum(cell.value for cell in board if cell.index in self.cells)
+
+        if sum_so_far + number > self.total:
+            if show_constraint:
+                print(number, f"WOULD EXCEED THE TOTAL ({self.total}) OF THIS CAGE")
+            return False
+
+        if number in [cell.value for cell in board if cell.index in self.cells] and self.no_repeat:
+            if show_constraint:
+                print(number, f"ALREADY IN CAGE")
+            return False
+
+        if self.space_left(board) == 1 and number + sum_so_far < self.total:
+            print("USING", number, f"WOULD ONLY REACH {sum_so_far + number} NOT THE TOTAL ({self.total}) OF THIS CAGE")
+            return False
+
+        return True
+
+    def space_left(self, board: List[Cell]) -> int:
+        return len([cell for cell in board if cell.index in self.cells and cell.value == 0])
+
+    def draw(self, board: List[Cell], painter: QPainter, cell_size: int):
+        pen = QPen(QColor("#000000"), 3.0, Qt.DotLine)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+
+        edges = tile_to_poly(board, cell_size, set(self.cells), self.inner_offset)
+        for edge in edges:
+            if edge.edge_type == 0:
+
+                painter.drawLine(
+                    cell_size + edge.sx + self.inner_offset,
+                    cell_size + edge.sy + self.inner_offset,
+                    cell_size + edge.ex - self.inner_offset,
+                    cell_size + edge.ey + self.inner_offset
+                )
+
+            elif edge.edge_type == 1:
+                painter.drawLine(
+                    cell_size + edge.sx - self.inner_offset,
+                    cell_size + edge.sy + self.inner_offset,
+                    cell_size + edge.ex - self.inner_offset,
+                    cell_size + edge.ey - self.inner_offset
+                )
+
+            elif edge.edge_type == 2:
+                painter.drawLine(
+                    cell_size + edge.sx + self.inner_offset,
+                    cell_size + edge.sy - self.inner_offset,
+                    cell_size + edge.ex - self.inner_offset,
+                    cell_size + edge.ey - self.inner_offset
+                )
+
+            else:
+                painter.drawLine(
+                    cell_size + edge.sx + self.inner_offset,
+                    cell_size + edge.sy + self.inner_offset,
+                    cell_size + edge.ex + self.inner_offset,
+                    cell_size + edge.ey - self.inner_offset
+                )
+
+        painter.drawText(QRect(8 + cell_size + edges[0].sx, 5 + cell_size + edges[0].sy, 20, 20),
+                         str(self.total))
 
 
 class Arrow:
@@ -32,125 +97,132 @@ class Arrow:
         return s <= self.total
 
 
-class Sudoku:
-    NUMBERS = "123456789"
-
-    def __init__(self, content: List[List[str]], empty_character: str = "-"):
-
-        self.board = content
-        self.initial = content.copy()
-
-        self.empty_character = empty_character
-
-        self.cages: List[Cage] = []
-
-        self.arrows: List[Arrow] = []
-
-    def add_cage(self, cage: Cage):
-        self.cages.append(cage)
-
-    def add_arrow(self, arrow: Arrow):
-        self.arrows.append(arrow)
-
-    @classmethod
-    def from_string(cls, content: str, empty_character: str = "-"):
-        obj = cls([[content[x * 9 + y] for y in range(9)] for x in range(9)])
-        obj.empty_character = empty_character
-        return obj
-
-    def show(self):
-        for row in range(9):
-            for col in range(9):
-                print(f"{self.initial[row][col]}", end="  ")
-            print()
+class Thermometer:
+    def __init__(self, sudoku: "Sudoku", path: List[int]):
+        self.sudoku = sudoku
+        self.bulb_position = path[0]
+        self.path = path
 
     def __repr__(self):
-        s = ""
+        return ' -> '.join(map(str, self.path))
 
-        for row in range(9):
-            for col in range(9):
-                s += f"{self.board[row][col]}  "
-            s += '\n'
-        return s
+    @property
+    def cells(self):
+        return [self.sudoku.board[index] for index in self.path]
 
-    def next_empty(self) -> Tuple[int, int]:
-        for row in range(9):
-            for col in range(9):
-                if self.board[row][col] == self.empty_character:
-                    return row, col
-        return -1, -1
+    def ascending(self, number: int, pos: int):
+        for cell in [c for c in self.cells[pos + 1:] if c.value != 0]:
+            if number > cell.value:
+                return False, cell
+        return True, None
 
-    def solve(self):
-        ne = self.next_empty()
-        if ne == (-1, -1):
-            return True
-        else:
-            row, col = ne
+    def empties(self, start: int):
+        cells = []
+        for i in range(start + 1, len(self.path)):
 
-        for num in self.NUMBERS:
+            if self.cells[i].value == 0:
+                cells.append(self.cells[i])
+            else:
+                cells.append(self.cells[i])
+                break
 
-            if self.valid(num, row, col):
-                self.board[row][col] = str(num)
+        return cells
 
-                if self.solve():
-                    return True
-                self.board[row][col] = self.empty_character
+    def enough_space(self, index: int, number: int):
 
-        return False
+        seq = self.empties(index)
+        if not seq:
+            return True, [1]
+        if all(x.value == 0 for x in seq):
+            return True, seq
 
-    def valid(self, number: str, row: int, col: int):
+        return number + len(seq) - 1 < seq[-1].value, seq
 
-        for r in range(9):
-            if self.board[row][r] == number and col != r:
-                return False
+    def possible_index(self, number: int, index: int, show_constraint: bool = False):
+        if number == 1 and index != 0:
+            if show_constraint:
+                print(number, "CAN ONLY GO ON THE FIRST POSITION IN A THERMOMETER")
 
-        for c in range(9):
-            if self.board[c][col] == number and row != c:
-                return False
+            return False
 
-        box_x = col // 3
-        box_y = row // 3
+        if number == 9 and index != len(self.path) - 1:
+            if show_constraint:
+                print(number, "CAN ONLY GO ON THE LAST POSITION IN A THERMOMETER")
+            return False
 
-        for i in range(box_y * 3, box_y * 3 + 3):
-            for j in range(box_x * 3, box_x * 3 + 3):
-                if self.board[i][j] == number and (i, j) != (row, col):
-                    return False
+        space_after = len(self.path[index + 1:])
+        space_before = len(self.path[:index])
 
-        for cage in self.cages:
-            if not cage.valid(self.board): return False
+        if number > 9 - space_after:
+            if show_constraint:
+                print(number, "NOT ENOUGH SPACE AFTER")
 
-        for arrow in self.arrows:
-            if not arrow.valid(self.board): return False
+            return False
+
+        if number <= space_before:
+            if show_constraint:
+                print(number, "NOT ENOUGH SPACE BEFORE")
+            return False
 
         return True
 
+    def valid(self, pos: int, number: int, show_constraint: bool = False) -> bool:
+        index = self.path.index(pos)
 
-if __name__ == '__main__':
-    b = Sudoku(
-        [
-            ["4", "?", "?", "?", "2", "9", "?", "8", "1"],
-            ["8", "?", "5", "?", "3", "1", "?", "?", "?"],
-            ["?", "?", "2", "?", "7", "?", "3", "5", "?"],
-            ["7", "4", "?", "9", "?", "?", "?", "?", "?"],
-            ["?", "?", "?", "?", "?", "8", "5", "7", "9"],
-            ["?", "?", "?", "6", "1", "7", "?", "?", "3"],
-            ["?", "?", "?", "?", "?", "?", "?", "1", "6"],
-            ["9", "7", "8", "?", "?", "?", "?", "?", "5"],
-            ["?", "?", "?", "2", "9", "5", "?", "?", "?"]
-        ],
-        empty_character="?"
-    )
+        if number in self.cells:
+            if show_constraint:
+                print(number, "TWICE ON THERMOMETER")
+            return False
 
+        ascending, cell = self.ascending(number, index)
 
+        if not ascending:
+            if show_constraint:
+                print(number, "BIGGER THAN", cell.value, "AT", cell.index, "ON THERMOMETER")
+            return False
 
-    template = (
-        "?????????"
-        "?????????"
-        "?????????"
-        "?????????"
-        "?????????"
-        "?????????"
-        "?????????"
-        "?????????"
-        "?????????"
-    )
+        if not self.possible_index(number, index, show_constraint):
+            return False
+
+        space, seq = self.enough_space(index, number)
+        seq[0] = number
+
+        if not space:
+            if show_constraint:
+                print(number, "NOT ENOUGH NUMBERS AVAILABLE TO FILL SPACE", seq)
+            return False
+
+        return True
+
+    def draw(self, painter: QPainter, cell_size: int):
+
+        brush = QBrush(QColor("#BBBBBB"))
+        painter.setBrush(brush)
+
+        pen = QPen(QColor("#BBBBBB"), 6.0)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+
+        bulb = self.cells[0]
+        row, col = bulb.row, bulb.column
+
+        painter.drawEllipse(
+            cell_size // 4 + cell_size + col * cell_size,
+            cell_size // 4 + cell_size + row * cell_size,
+            cell_size // 2, cell_size // 2
+        )
+
+        pen = QPen(QColor("#BBBBBB"), 10.0)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+
+        for i in range(len(self.cells) - 1):
+            c1 = self.cells[i]
+            c2 = self.cells[i + 1]
+
+            painter.drawLine(
+                cell_size // 2 + cell_size + c1.column * cell_size,
+                cell_size // 2 + cell_size + c1.row * cell_size,
+                cell_size // 2 + cell_size + c2.column * cell_size,
+                cell_size // 2 + cell_size + c2.row * cell_size,
+            )
