@@ -4,7 +4,7 @@ import itertools
 import math
 import random
 import time
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Tuple
 
 import numpy as np
 from PySide6.QtCore import QPoint
@@ -123,8 +123,8 @@ def tile_to_poly(cells: List[Cell], cell_size: int, selected: Set, inner_offset:
         if north not in selected:
 
             if (cells[get_index(west)].edge_exists[NORTH]
-                    and cells[get_index(p)].row == cells[
-                        get_index(west)].row):  # Don't connect to row above
+                and cells[get_index(p)].row == cells[
+                    get_index(west)].row):  # Don't connect to row above
 
                 edges[cells[get_index(west)].edge_id[NORTH]].ex += cell_size
                 cells[i].edge_id[NORTH] = cells[get_index(west)].edge_id[NORTH]
@@ -178,8 +178,8 @@ def tile_to_poly(cells: List[Cell], cell_size: int, selected: Set, inner_offset:
 
         if south not in selected:
             if (cells[get_index(west)].edge_exists[SOUTH]
-                    and cells[get_index(p)].row == cells[
-                        get_index(west)].row):  # Don't connect to row above
+                and cells[get_index(p)].row == cells[
+                    get_index(west)].row):  # Don't connect to row above
 
                 edges[cells[get_index(west)].edge_id[SOUTH]].ex += cell_size
                 cells[i].edge_id[SOUTH] = cells[get_index(west)].edge_id[SOUTH]
@@ -224,22 +224,23 @@ class Sudoku:
     NUMBERS = (1, 2, 3, 4, 5, 6, 7, 8, 9)
 
     def __init__(
-            self,
-            board: List[Cell],
-            king_constraint: bool = False,
-            knight_constraint: bool = False,
-            orthogonal_consecutive_constraint: bool = False,
-            orthogonal_ration_2_to_1_constraint: bool = False,
-            diagonal_top_left: bool = False,
-            diagonal_top_right: bool = False,
-            disjoint: bool = False,
+        self,
+        board: List[Cell],
+        king_constraint: bool = False,
+        knight_constraint: bool = False,
+        orthogonal_consecutive_constraint: bool = False,
+        orthogonal_ration_2_to_1_constraint: bool = False,
+        diagonal_top_left: bool = False,
+        diagonal_top_right: bool = False,
+        disjoint: bool = False,
     ):
 
         self.initial_state = copy.deepcopy(board)
         self.board = board
 
-        self.states = [copy.deepcopy(board)]
-        self.state = 0
+        self.board_copy = copy.deepcopy(board)
+
+        self.solve_board = False
 
         self.king_constraint = king_constraint
         self.knight_constraint = knight_constraint
@@ -251,6 +252,11 @@ class Sudoku:
 
         self.thermometers: List[Thermometer] = []
         self.cages: List[Cage] = []
+
+        self.lines: List[Tuple[str, List[int]]] = []
+
+        self.forced_odds: List[int] = []
+        self.forced_evens: List[int] = []
 
     @classmethod
     def from_file(cls):
@@ -295,37 +301,52 @@ class Sudoku:
         return [self.get_entire_column(i) for i in range(9)]
 
     def next_empty(self) -> Optional[int]:
-        cells = sorted([cell for cell in self.board if cell.value == 0], key=lambda c: len(c.valid_numbers))
+
+        board_to_search = self.board if self.solve_board else self.board_copy
+
+        cells = sorted([cell for cell in board_to_search if cell.value == 0],
+                       key=lambda c: len(c.valid_numbers))
         if not cells:
             return None
 
         return cells[0].index
 
     def get_entire_row(self, index: int):
+
+        board_to_search = self.board if self.solve_board else self.board_copy
+
         row_start = index // 9 * 9
         row_end = row_start + 9
-        return self.board[row_start:row_end]
+        return board_to_search[row_start:row_end]
 
     def get_entire_column(self, index: int):
+        board_to_search = self.board if self.solve_board else self.board_copy
+
         col_start = index % 9
-        return [self.board[i] for i in range(col_start, col_start + 81, 9)]
+        return [board_to_search[i] for i in range(col_start, col_start + 81, 9)]
 
     def get_entire_box(self, index: int):
-        cell = self.board[index]
+        board_to_search = self.board if self.solve_board else self.board_copy
+
+        cell = board_to_search[index]
         box_x = cell.row // 3 * 3 * 9
         box_y = cell.column // 3 * 3
 
         start = box_x + box_y
-        box = [self.board[start + i * 9: start + 3 + i * 9] for i in range(3)]
+        box = [board_to_search[start + i * 9: start + 3 + i * 9] for i in range(3)]
         return list(itertools.chain(*box))
 
     def get_king_neighbours(self, index: int):
+        board_to_search = self.board if self.solve_board else self.board_copy
+
         offsets = (-10, -9, -8, -1, 1, 8, 9, 10)
-        return [self.board[index + offset] for offset in offsets if 0 <= index + offset <= 80]
+        return [board_to_search[index + offset] for offset in offsets if 0 <= index + offset <= 80]
 
     def get_knight_neighbours(self, index: int):
+        board_to_search = self.board if self.solve_board else self.board_copy
+
         offsets = (-19, -17, -11, -7, 7, 11, 17, 19)
-        cell = self.board[index]
+        cell = board_to_search[index]
         neighbours = []
 
         for offset in offsets:
@@ -345,91 +366,77 @@ class Sudoku:
             if cell.column == 7 and offset in (-17, -7, 11, 19):
                 continue
 
-            neighbours.append(self.board[index + offset])
+            neighbours.append(board_to_search[index + offset])
 
         return neighbours
 
     def get_orthogonals(self, index: int):
         offsets = (-9, -1, 1, 9)
-        return [self.board[index + offset] for offset in offsets if 0 <= index + offset <= 80]
+        board_to_search = self.board if self.solve_board else self.board_copy
+
+        return [board_to_search[index + offset] for offset in offsets if 0 <= index + offset <= 80]
 
     def get_diagonal_top_left(self):
-        return [self.board[i * 10] for i in range(9)]
+        board_to_search = self.board if self.solve_board else self.board_copy
+
+        return [board_to_search[i * 10] for i in range(9)]
 
     def get_diagonal_top_right(self):
-        return [self.board[i * 8] for i in range(1, 10)]
+        board_to_search = self.board if self.solve_board else self.board_copy
 
-    def pencil_marks(self):
-        for cell in self.board:
-            if cell.value == 0:
-                cell.valid_numbers = self.valid_numbers(cell.index)
+        return [board_to_search[i * 8] for i in range(1, 10)]
 
-        for i, box in enumerate(self.boxes()):
-            possibilities = list(
-                itertools.chain.from_iterable([cell.valid_numbers for cell in box if cell.value == 0]))
-            number = None
-            for n in self.NUMBERS:
-                if possibilities.count(n) == 1:
-                    number = n
-                if number:
-                    for cell in box:
-                        if number in cell.valid_numbers:
-                            cell.valid_numbers = [number]
+    @property
+    def sorted_empties(self):
+        board_to_search = self.board if self.solve_board else self.board_copy
 
-        for i, row in enumerate(self.rows()):
-            possibilities = list(
-                itertools.chain.from_iterable([cell.valid_numbers for cell in row if cell.value == 0]))
-            number = None
-            for n in self.NUMBERS:
-                if possibilities.count(n) == 1:
-                    number = n
-                if number:
-                    for cell in row:
-                        if number in cell.valid_numbers:
-                            cell.valid_numbers = [number]
-
-        for i, col in enumerate(self.columns()):
-            possibilities = list(
-                itertools.chain.from_iterable([cell.valid_numbers for cell in col if cell.value == 0]))
-            number = None
-            for n in self.NUMBERS:
-                if possibilities.count(n) == 1:
-                    number = n
-                if number:
-                    for cell in col:
-                        if number in cell.valid_numbers:
-                            cell.valid_numbers = [number]
+        return sorted([cell for cell in board_to_search if cell.value == 0],
+                      key=lambda c: len(c.valid_numbers))
 
     def next_step(self):
 
         self.calculate_valid_numbers()
 
-        empty_cells = sorted([cell for cell in self.board if cell.value == 0], key=lambda c: len(c.valid_numbers))
+        empty_cells = self.sorted_empties
 
         if not empty_cells:
-            # SOLVED
+            print("DONE")
             return None
 
         best_cell = empty_cells[0]
+
+        if len(best_cell.valid_numbers) == 1:
+            best_cell.value = best_cell.valid_numbers[0]
+            self.calculate_valid_numbers()
+            return best_cell.index
+
+        valids = best_cell.valid_numbers.copy()
+        board_before = copy.deepcopy(self.board)
 
         for number in best_cell.valid_numbers:
             best_cell.value = number
 
             self.calculate_valid_numbers()
 
-            if any([len(cell.valid_numbers) == 0 for cell in empty_cells if cell != best_cell]):
-                best_cell.value = 0
-                best_cell.impossible_numbers.append(number)
-                continue
+            if not self.solve():
+                valids.remove(number)
+                self.board = copy.deepcopy(board_before)
+
+        best_cell.valid_numbers = valids
+
+        return None
 
         # RETURN INDEX TO SHOW CURRENT POSITION ON GRID
         return best_cell.index
 
     def calculate_valid_numbers(self):
-        for cell in self.board:
+        board_to_search = self.board if self.solve_board else self.board_copy
+
+        for cell in board_to_search:
             cell.valid_numbers = self.valid_numbers(cell.index)
 
     def solve(self):
+        board_to_search = self.board if self.solve_board else self.board_copy
 
         self.calculate_valid_numbers()
         index = self.next_empty()
@@ -438,7 +445,7 @@ class Sudoku:
             print("DONE")
             return True
 
-        cell = self.board[index]
+        cell = board_to_search[index]
 
         for number in cell.valid_numbers:
             cell.value = number
@@ -452,7 +459,17 @@ class Sudoku:
 
     def valid(self, number: int, index: int, show_constraints: bool = False):
 
+        board_to_search = self.board if self.solve_board else self.board_copy
+
         show_constraint = show_constraints
+
+        if index in self.forced_odds and number % 2 == 0:
+            if show_constraint: print(index, "MUST BE EVEN")
+            return False
+
+        if index in self.forced_evens and number % 2 != 0:
+            if show_constraint: print(index, "MUST BE ODD")
+            return False
 
         if self.disjoint:
             this_box = self.get_entire_box(index)
@@ -550,13 +567,13 @@ class Sudoku:
         for cage in self.cages:
             if index not in cage.cells: continue
 
-            if not cage.valid(self.board, number, show_constraint=show_constraints):
+            if not cage.valid(board_to_search, number, show_constraint=show_constraints):
                 return False
 
         for thermo in self.thermometers:
             if index not in thermo.path: continue
 
-            if not thermo.valid(index, number, show_constraint=show_constraints):
+            if not thermo.valid(board_to_search, index, number, show_constraint=show_constraints):
                 return False
 
         return True

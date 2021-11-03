@@ -1,7 +1,10 @@
 from __future__ import annotations
+
+import threading
+
 from PySide6.QtCore import QRect, Qt, QPoint, QObject, QEvent, QTimer
 from PySide6.QtGui import QPaintEvent, QPainter, QPen, QColor, QResizeEvent, QMouseEvent, QFont, \
-    QKeyEvent, QEnterEvent, QPolygon
+    QKeyEvent, QEnterEvent, QPolygon, QBrush
 from PySide6.QtWidgets import QWidget, QSizePolicy, QGridLayout
 
 from sudoku import Sudoku
@@ -51,10 +54,12 @@ class SudokuBoard(QWidget):
         self.setFixedSize(11 * self.cell_size, 11 * self.cell_size)
 
     def solve_board(self):
-        t = QTimer(self)
+        """t = QTimer(self)
         t.timeout.connect(self.next_step)
         t.setInterval(100)
-        t.start()
+        t.start()"""
+        self.sudoku.solve_board = True
+        self.sudoku.solve()
         self.unsolved = False
 
         self.update()
@@ -126,11 +131,65 @@ class SudokuBoard(QWidget):
 
         painter.setFont(QFont("Arial Black", 8))
 
+        painter.setBrush(QBrush(QColor("#888888")))
+        painter.setPen(Qt.NoPen)
+
+        for index in self.sudoku.forced_odds:
+            cell = self.sudoku.board[index]
+
+            rect = QRect(
+                cell.column * self.cell_size + grid_size // 9 + 10,
+                cell.row * self.cell_size + grid_size // 9 + 10,
+                grid_size // 9 - 20,
+                grid_size // 9 - 20
+            )
+
+            painter.drawEllipse(rect)
+
+        for index in self.sudoku.forced_evens:
+            cell = self.sudoku.board[index]
+
+            rect = QRect(
+                cell.column * self.cell_size + grid_size // 9 + 10,
+                cell.row * self.cell_size + grid_size // 9 + 10,
+                grid_size // 9 - 20,
+                grid_size // 9 - 20
+            )
+
+            painter.fillRect(rect, QColor("#888888"))
+
         for thermo in self.sudoku.thermometers:
-            thermo.draw(painter, self.cell_size)
+            thermo.draw(painter,
+                        self.sudoku.board if self.sudoku.solve_board else self.sudoku.board_copy,
+                        self.cell_size)
 
         for cage in self.sudoku.cages:
             cage.draw(self.sudoku.board, painter, self.cell_size)
+
+        for line_type, line in self.sudoku.lines:
+
+            if line_type == "WHISPER":
+                color = QColor("#10b558")
+
+            elif line_type == "RENBAN":
+                color = QColor("#ff17d1")
+            else:
+                color = QColor("#8c0000")
+
+            brush = QBrush(color)
+            pen = QPen(color, 10.0)
+            painter.setBrush(brush)
+            pen.setCapStyle(Qt.RoundCap)
+            painter.setPen(pen)
+
+            for i in range(len(line) - 1):
+                x1 = line[i] % 9 * self.cell_size + self.cell_size + self.cell_size // 2
+                x2 = line[i + 1] % 9 * self.cell_size + self.cell_size + self.cell_size // 2
+
+                y1 = line[i] // 9 * self.cell_size + self.cell_size + self.cell_size // 2
+                y2 = line[i + 1] // 9 * self.cell_size + self.cell_size + self.cell_size // 2
+
+                painter.drawLine(x1, y1, x2, y2)
 
         painter.setBrush(Qt.NoBrush)
 
@@ -237,8 +296,9 @@ class SudokuBoard(QWidget):
             else:
                 size = 10 if len(cell.valid_numbers) <= 5 else 16 - len(cell.valid_numbers)
                 painter.setFont(QFont("Arial Black", size))
-                painter.setPen(QPen(QColor("#666666"), 1.0))
-                painter.drawText(rect, Qt.AlignCenter, ''.join(sorted(map(str, cell.valid_numbers))))
+                painter.setPen(QPen(QColor("#333333"), 1.0))
+                painter.drawText(rect, Qt.AlignCenter,
+                                 ''.join(sorted(map(str, cell.valid_numbers))))
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         self.setFocus()
@@ -288,7 +348,6 @@ class SudokuBoard(QWidget):
         elif event.buttons() == Qt.RightButton and new_location in self.selected:
             self.selected.remove(new_location)
             self.update()
-
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         self.ctrl_pressed = event.key() == Qt.Key_Control

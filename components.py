@@ -16,6 +16,9 @@ class Cage:
 
     def valid(self, board: List[Cell], number: int, show_constraint: bool = False) -> bool:
 
+        if number >= self.total and len(self.cells) > 1:
+            return False
+
         sum_so_far = sum(cell.value for cell in board if cell.index in self.cells)
 
         if sum_so_far + number > self.total:
@@ -107,31 +110,30 @@ class Thermometer:
     def __repr__(self):
         return ' -> '.join(map(str, self.path))
 
-    @property
-    def cells(self):
-        return [self.sudoku.board[index] for index in self.path]
+    def cells(self, board: List[Cell]):
+        return [board[index] for index in self.path]
 
-    def ascending(self, number: int, pos: int):
-        for cell in [c for c in self.cells[pos + 1:] if c.value != 0]:
+    def ascending(self, board: List[Cell], number: int, pos: int):
+        for cell in [c for c in self.cells(board)[pos + 1:] if c.value != 0]:
             if number > cell.value:
                 return False, cell
         return True, None
 
-    def empties(self, start: int):
+    def empties(self, board: List[Cell], start: int):
         cells = []
         for i in range(start + 1, len(self.path)):
 
-            if self.cells[i].value == 0:
-                cells.append(self.cells[i])
+            if self.cells(board)[i].value == 0:
+                cells.append(self.cells(board)[i])
             else:
-                cells.append(self.cells[i])
+                cells.append(self.cells(board)[i])
                 break
 
         return cells
 
-    def enough_space(self, index: int, number: int):
+    def enough_space(self, board: List[Cell], index: int, number: int):
 
-        seq = self.empties(index)
+        seq = self.empties(board, index)
         if not seq:
             return True, [1]
         if all(x.value == 0 for x in seq):
@@ -167,19 +169,19 @@ class Thermometer:
 
         return True
 
-    def valid(self, pos: int, number: int, show_constraint: bool = False) -> bool:
+    def valid(self, board: List[Cell], pos: int, number: int, show_constraint: bool = False) -> bool:
         index = self.path.index(pos)
 
-        if number in self.cells:
+        if number in self.cells(board):
             if show_constraint:
                 print(number, "TWICE ON THERMOMETER")
             return False
 
-        for cell in self.cells[0:index]:
+        for cell in self.cells(board)[0:index]:
             if cell.value >= number:
                 return False
 
-        ascending, cell = self.ascending(number, index)
+        ascending, cell = self.ascending(board, number, index)
 
         if not ascending:
             if show_constraint:
@@ -189,7 +191,7 @@ class Thermometer:
         if not self.possible_index(number, index, show_constraint):
             return False
 
-        space, seq = self.enough_space(index, number)
+        space, seq = self.enough_space(board, index, number)
         seq[0] = number
 
         if not space:
@@ -199,31 +201,31 @@ class Thermometer:
 
         return True
 
-    def draw(self, painter: QPainter, cell_size: int):
+    def draw(self, painter: QPainter, board: List[Cell], cell_size: int):
 
         brush = QBrush(QColor("#BBBBBB"))
         painter.setBrush(brush)
 
-        pen = QPen(QColor("#BBBBBB"), 6.0)
+        pen = QPen(QColor("#BBBBBB"), 8.0)
         pen.setCapStyle(Qt.RoundCap)
         painter.setPen(pen)
 
-        bulb = self.cells[0]
+        bulb = self.cells(board)[0]
         row, col = bulb.row, bulb.column
 
         painter.drawEllipse(
-            cell_size // 4 + cell_size + col * cell_size,
-            cell_size // 4 + cell_size + row * cell_size,
-            cell_size // 2, cell_size // 2
+            cell_size // 4 + cell_size + col * cell_size - 5,
+            cell_size // 4 + cell_size + row * cell_size - 5,
+            cell_size // 2 + 10, cell_size // 2 + 10
         )
 
-        pen = QPen(QColor("#BBBBBB"), 10.0)
+        pen = QPen(QColor("#BBBBBB"), 20.0)
         pen.setCapStyle(Qt.RoundCap)
         painter.setPen(pen)
 
-        for i in range(len(self.cells) - 1):
-            c1 = self.cells[i]
-            c2 = self.cells[i + 1]
+        for i in range(len(self.cells(board)) - 1):
+            c1 = self.cells(board)[i]
+            c2 = self.cells(board)[i + 1]
 
             painter.drawLine(
                 cell_size // 2 + cell_size + c1.column * cell_size,

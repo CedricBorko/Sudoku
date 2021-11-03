@@ -2,7 +2,7 @@ import datetime
 import itertools
 from datetime import date
 
-from PySide6.QtCore import Qt, QTimer, QEvent
+from PySide6.QtCore import Qt, QTimer, QEvent, QPoint
 from PySide6.QtGui import QCursor, QMouseEvent, QIcon, QResizeEvent, QEnterEvent, QPixmap
 from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QFrame, QLabel, QHBoxLayout, QPushButton, \
     QWidget, QSizeGrip, QComboBox
@@ -45,15 +45,27 @@ class SudokuWindow(QMainWindow):
         self.solve_btn = QPushButton("Solve")
         self.next_step_btn = QPushButton("Next Step")
 
+        """s = Sudoku.from_string(
+            "000000000"
+            "000000000"
+            "000000000"
+            "000000000"
+            "000000000"
+            "000000000"
+            "000000000"
+            "000000000"
+            "000000000"
+        )"""
+
         s = Sudoku.from_string(
             "000000000"
+            "000000038"
+            "000000000"
+            "380000000"
             "000000000"
             "000000000"
             "000000000"
-            "000000000"
-            "000000000"
-            "000000000"
-            "000000000"
+            "000003800"
             "000000000"
         )
 
@@ -69,24 +81,44 @@ class SudokuWindow(QMainWindow):
             "000000600"
         )"""
 
-        s.diagonal_top_left = False
-        s.diagonal_top_right = False
-        s.disjoint = False
+        s.knight_constraint = True
+        s.king_constraint = True
+        s.orthogonal_consecutive_constraint = True
+
+        s.lines.append(("WHISPER", [0, 1, 11]))
+        s.lines.append(("RENBAN", [31, 40, 49]))
+        s.lines.append(("ANYTHING", [72, 64, 56, 47]))
+
+        s.forced_evens.append(3)
+        s.forced_evens.append(5)
+        s.forced_evens.append(8)
+        s.forced_evens.append(1)
+        s.forced_evens.append(9)
+
+        s.forced_odds.append(10)
+        s.forced_odds.append(78)
+        s.forced_odds.append(60)
+        s.forced_odds.append(61)
+        s.forced_odds.append(24)
+
+        s.diagonal_top_right = True
+        s.diagonal_top_left = True
+
 
         s.thermometers.append(Thermometer(s, [18, 9, 0, 1, 11, 19]))
         s.thermometers.append(Thermometer(s, [54, 55, 64, 65]))
-        s.thermometers.append(Thermometer(s, [64, 73]))
         s.thermometers.append(Thermometer(s, [78, 69, 60, 61, 62, 71, 80]))
         s.thermometers.append(Thermometer(s, [32, 31, 40, 49, 48]))
         s.thermometers.append(Thermometer(s, [15, 7, 16, 25]))
 
-        """s.cages.append(Cage([31, 40, 49], 12))
+        s.cages.append(Cage([9, 18], 3))
+
+        s.cages.append(Cage([31, 40, 49], 12))
         s.cages.append(Cage([33, 42, 51], 24))
         s.cages.append(Cage([35, 44, 53], 15))
         s.cages.append(Cage([58, 67, 76], 24))
         s.cages.append(Cage([60, 69, 78], 15))
-        s.cages.append(Cage([62, 71, 80], 6))"""
-        s.calculate_valid_numbers()
+        s.cages.append(Cage([62, 71, 80], 6))
 
         self.board = SudokuBoard(self, s)
 
@@ -324,6 +356,6 @@ class SudokuTitleBar(QFrame):
         delta = datetime.datetime.now() - self.start_time
         minutes = delta.seconds // 60
         minutes = f"{minutes}" if minutes >= 10 else f"0{minutes}"
-        seconds = f"{delta.seconds}" if delta.seconds >= 10 else f"0{delta.seconds}"
+        seconds = f"{delta.seconds % 60}" if delta.seconds >= 10 else f"0{delta.seconds % 60}"
 
         self.title_label.setText(f"{minutes}:{seconds}")
