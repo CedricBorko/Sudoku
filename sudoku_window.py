@@ -8,8 +8,9 @@ from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QFrame, QLabel, QHBoxLay
     QWidget, QSizeGrip, QComboBox
 
 from board import SudokuBoard
-from components import Thermometer, Cage
+from componentss import Cage
 from sudoku import Sudoku
+from components.lines import GermanWhispersLine, PalindromeLine, Thermometer
 
 
 class SudokuWindow(QMainWindow):
@@ -45,29 +46,29 @@ class SudokuWindow(QMainWindow):
         self.solve_btn = QPushButton("Solve")
         self.next_step_btn = QPushButton("Next Step")
 
+        s = Sudoku.from_string(
+            "000000000"
+            "500000000"
+            "000000000"
+            "400000000"
+            "200000000"
+            "000000000"
+            "000000000"
+            "000000000"
+            "300000000"
+        )
+
         """s = Sudoku.from_string(
             "000000000"
+            "400000038"
             "000000000"
-            "000000000"
-            "000000000"
+            "380000000"
             "000000000"
             "000000000"
             "000000000"
             "000000000"
             "000000000"
         )"""
-
-        s = Sudoku.from_string(
-            "000000000"
-            "000000038"
-            "000000000"
-            "380000000"
-            "000000000"
-            "000000000"
-            "000000000"
-            "000003800"
-            "000000000"
-        )
 
         """s = Sudoku.from_string(
             "006300000"
@@ -81,13 +82,13 @@ class SudokuWindow(QMainWindow):
             "000000600"
         )"""
 
-        s.knight_constraint = True
-        s.king_constraint = True
-        s.solve_board = True
-        s.orthogonal_consecutive_constraint = True
-        s.calculate_valid_numbers()
+        # s.lines.append(GermanWhispersLine(s, [40, 41, 42]))
+        # s.lines.append(PalindromeLine(s, [31, 32, 33, 43, 44]))
+
+        # s.calculate_valid_numbers()
+
         """
-        s.lines.append(("WHISPER", [0, 1, 11]))
+        
         s.lines.append(("RENBAN", [31, 40, 49]))
         s.lines.append(("ANYTHING", [72, 64, 56, 47]))
 
@@ -104,14 +105,17 @@ class SudokuWindow(QMainWindow):
         s.forced_odds.append(24)
 
         s.diagonal_top_right = True
+        
+        """
+
         s.diagonal_top_left = True
-
         s.thermometers.append(Thermometer(s, [18, 9, 0, 1, 11, 19]))
-        s.thermometers.append(Thermometer(s, [54, 55, 64, 65]))
-        s.thermometers.append(Thermometer(s, [78, 69, 60, 61, 62, 71, 80]))
-        s.thermometers.append(Thermometer(s, [32, 31, 40, 49, 48]))
-        s.thermometers.append(Thermometer(s, [15, 7, 16, 25]))
+        s.thermometers.append(Thermometer(s, [78, 69, 60, 61, 62, 71, 80, 79, 70]))
 
+        # s.calculate_valid_numbers()
+        print(s.try_solve())
+
+        """
         s.cages.append(Cage([9, 18], 3))
         s.cages.append(Cage([31, 40, 49], 12))
         s.cages.append(Cage([33, 42, 51], 24))

@@ -3,6 +3,7 @@ import copy
 import itertools
 import math
 import random
+import sys
 import time
 from typing import List, Optional, Set, Tuple
 
@@ -56,7 +57,7 @@ class Cell:
         )
 
     def __repr__(self):
-        return f"Cell({self.row=}, {self.column=}, {self.value=})"
+        return f"Cell({self.index}, {self.value})"
 
     def reset(self):
         self.edge_id = [0, 0, 0, 0]
@@ -173,8 +174,8 @@ def tile_to_poly(cells: List[Cell], cell_size: int, selected: Set, inner_offset:
         if north not in selected:
 
             if (cells[get_index(west)].edge_exists[NORTH]
-                    and cells[get_index(p)].row == cells[
-                        get_index(west)].row):  # Don't connect to row above
+                and cells[get_index(p)].row == cells[
+                    get_index(west)].row):  # Don't connect to row above
 
                 edges[cells[get_index(west)].edge_id[NORTH]].ex += cell_size
                 cells[i].edge_id[NORTH] = cells[get_index(west)].edge_id[NORTH]
@@ -228,8 +229,8 @@ def tile_to_poly(cells: List[Cell], cell_size: int, selected: Set, inner_offset:
 
         if south not in selected:
             if (cells[get_index(west)].edge_exists[SOUTH]
-                    and cells[get_index(p)].row == cells[
-                        get_index(west)].row):  # Don't connect to row above
+                and cells[get_index(p)].row == cells[
+                    get_index(west)].row):  # Don't connect to row above
 
                 edges[cells[get_index(west)].edge_id[SOUTH]].ex += cell_size
                 cells[i].edge_id[SOUTH] = cells[get_index(west)].edge_id[SOUTH]
@@ -274,15 +275,15 @@ class Sudoku:
     NUMBERS = (1, 2, 3, 4, 5, 6, 7, 8, 9)
 
     def __init__(
-            self,
-            board: List[Cell],
-            king_constraint: bool = False,
-            knight_constraint: bool = False,
-            orthogonal_consecutive_constraint: bool = False,
-            orthogonal_ration_2_to_1_constraint: bool = False,
-            diagonal_top_left: bool = False,
-            diagonal_top_right: bool = False,
-            disjoint: bool = False,
+        self,
+        board: List[Cell],
+        king_constraint: bool = False,
+        knight_constraint: bool = False,
+        orthogonal_consecutive_constraint: bool = False,
+        orthogonal_ration_2_to_1_constraint: bool = False,
+        diagonal_top_left: bool = False,
+        diagonal_top_right: bool = False,
+        disjoint: bool = False,
     ):
 
         self.initial_state = copy.deepcopy(board)
@@ -290,7 +291,7 @@ class Sudoku:
 
         self.board_copy = copy.deepcopy(board)
 
-        self.solve_board = False
+        self.solve_board = True
 
         self.king_constraint = king_constraint
         self.knight_constraint = knight_constraint
@@ -303,7 +304,7 @@ class Sudoku:
         self.thermometers: List[Thermometer] = []
         self.cages: List[Cage] = []
 
-        self.lines: List[Tuple[str, List[int]]] = []
+        self.lines = []
 
         self.forced_odds: List[int] = []
         self.forced_evens: List[int] = []
@@ -495,22 +496,23 @@ class Sudoku:
         return best_cell.index
 
     def calculate_valid_numbers(self):
-        board_to_search = self.board if self.solve_board else self.board_copy
-
-        for cell in board_to_search:
+        for cell in self.board:
             cell.valid_numbers = self.valid_numbers(cell.index)
 
-    def solve(self):
-        board_to_search = self.board if self.solve_board else self.board_copy
+    def try_solve(self):
+        before = copy.deepcopy(self.board)
+        possible = self.solve()
+        self.board = before
+        return possible
 
+    def solve(self):
         self.calculate_valid_numbers()
         index = self.next_empty()
 
         if index is None:
-            print("DONE")
             return True
 
-        cell = board_to_search[index]
+        cell = self.board[index]
 
         for number in cell.valid_numbers:
             cell.value = number
@@ -638,9 +640,15 @@ class Sudoku:
                 return False
 
         for thermo in self.thermometers:
-            if index not in thermo.path: continue
+            if index not in thermo.indices: continue
 
-            if not thermo.valid(board_to_search, index, number, show_constraint=show_constraints):
+            if not thermo.valid(index, number):
+                return False
+
+        for line in self.lines:
+            if index not in line.indices: continue
+
+            if not line.valid(index, number):
                 return False
 
         return True

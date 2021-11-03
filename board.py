@@ -58,7 +58,7 @@ class SudokuBoard(QWidget):
         t.timeout.connect(self.next_step)
         t.setInterval(100)
         t.start()"""
-        self.sudoku.solve_board = True
+
         self.sudoku.solve()
         self.unsolved = False
 
@@ -123,7 +123,6 @@ class SudokuBoard(QWidget):
         for thermometer in self.sudoku.thermometers:
             thermometer.draw(
                 painter,
-                self.sudoku.board,
                 self.cell_size
             )
 
@@ -138,30 +137,13 @@ class SudokuBoard(QWidget):
 
         # DRAW RENBAN / WHISPER / PALINDROME LINES
 
-        for line_type, line in self.sudoku.lines:
+        for line in self.sudoku.lines:
+            line.draw(painter, self.cell_size)
 
-            if line_type == "WHISPER":
-                color = QColor("#10b558")
-
-            elif line_type == "RENBAN":
+            """elif line_type == "RENBAN":
                 color = QColor("#ff17d1")
             else:
-                color = QColor("#BBBBBB")
-
-            brush = QBrush(color)
-            pen = QPen(color, 10.0)
-            painter.setBrush(brush)
-            pen.setCapStyle(Qt.RoundCap)
-            painter.setPen(pen)
-
-            for i in range(len(line) - 1):
-                x1 = line[i] % 9 * self.cell_size + self.cell_size + self.cell_size // 2
-                x2 = line[i + 1] % 9 * self.cell_size + self.cell_size + self.cell_size // 2
-
-                y1 = line[i] // 9 * self.cell_size + self.cell_size + self.cell_size // 2
-                y2 = line[i + 1] // 9 * self.cell_size + self.cell_size + self.cell_size // 2
-
-                painter.drawLine(x1, y1, x2, y2)
+                color = QColor("#BBBBBB")"""
 
         painter.setBrush(Qt.NoBrush)
 
@@ -172,7 +154,7 @@ class SudokuBoard(QWidget):
             c = self.sudoku.board[next(iter(self.selected))]
             if c.value != 0:
                 for cell in set(self.sudoku.get_entire_column(c.index) + self.sudoku.get_entire_row(
-                        c.index) + self.sudoku.get_entire_box(c.index)):
+                    c.index) + self.sudoku.get_entire_box(c.index)):
                     painter.fillRect(cell.rect(self.cell_size), QColor(125, 125, 125, 50))
 
         # DRAW GRID
@@ -267,8 +249,6 @@ class SudokuBoard(QWidget):
             return
 
         location = y * 9 + x
-        if self.sudoku.board[location].value == 0:
-            print(self.sudoku.valid_numbers(location, True))
 
         if event.buttons() == Qt.LeftButton:
 

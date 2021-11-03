@@ -1,9 +1,27 @@
+import math
+from abc import ABC
 from typing import List, Tuple, Set
 
 from PySide6.QtCore import Qt, QPoint, QRect
 from PySide6.QtGui import QPainter, QBrush, QColor, QPen, QPolygon
 
 from sudoku import tile_to_poly, Cell
+
+
+class Constraint(ABC):
+    def __init__(self, sudoku: "Sudoku", indices: List[int]):
+        self.sudoku = sudoku
+        self.indices = indices
+
+    @property
+    def cells(self):
+        return [cell for cell in self.sudoku.board if cell.index in self.indices]
+
+    def valid(self, index: int, number: int):
+        pass
+
+    def draw(self, painter: QPainter, cell_size: int):
+        pass
 
 
 class Cage:
@@ -33,7 +51,8 @@ class Cage:
 
         if self.space_left(board) == 1 and number + sum_so_far < self.total:
             if show_constraint:
-                print("USING", number, f"WOULD ONLY REACH {sum_so_far + number} NOT THE TOTAL ({self.total}) OF THIS CAGE")
+                print("USING", number,
+                      f"WOULD ONLY REACH {sum_so_far + number} NOT THE TOTAL ({self.total}) OF THIS CAGE")
             return False
 
         return True
@@ -169,7 +188,8 @@ class Thermometer:
 
         return True
 
-    def valid(self, board: List[Cell], pos: int, number: int, show_constraint: bool = False) -> bool:
+    def valid(self, board: List[Cell], pos: int, number: int,
+              show_constraint: bool = False) -> bool:
         index = self.path.index(pos)
 
         if number in self.cells(board):
@@ -233,3 +253,9 @@ class Thermometer:
                 cell_size // 2 + cell_size + c2.column * cell_size,
                 cell_size // 2 + cell_size + c2.row * cell_size,
             )
+
+
+
+
+
+
