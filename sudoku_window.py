@@ -83,8 +83,10 @@ class SudokuWindow(QMainWindow):
 
         s.knight_constraint = True
         s.king_constraint = True
+        s.solve_board = True
         s.orthogonal_consecutive_constraint = True
-
+        s.calculate_valid_numbers()
+        """
         s.lines.append(("WHISPER", [0, 1, 11]))
         s.lines.append(("RENBAN", [31, 40, 49]))
         s.lines.append(("ANYTHING", [72, 64, 56, 47]))
@@ -104,7 +106,6 @@ class SudokuWindow(QMainWindow):
         s.diagonal_top_right = True
         s.diagonal_top_left = True
 
-
         s.thermometers.append(Thermometer(s, [18, 9, 0, 1, 11, 19]))
         s.thermometers.append(Thermometer(s, [54, 55, 64, 65]))
         s.thermometers.append(Thermometer(s, [78, 69, 60, 61, 62, 71, 80]))
@@ -112,13 +113,12 @@ class SudokuWindow(QMainWindow):
         s.thermometers.append(Thermometer(s, [15, 7, 16, 25]))
 
         s.cages.append(Cage([9, 18], 3))
-
         s.cages.append(Cage([31, 40, 49], 12))
         s.cages.append(Cage([33, 42, 51], 24))
         s.cages.append(Cage([35, 44, 53], 15))
         s.cages.append(Cage([58, 67, 76], 24))
         s.cages.append(Cage([60, 69, 78], 15))
-        s.cages.append(Cage([62, 71, 80], 6))
+        s.cages.append(Cage([62, 71, 80], 6))"""
 
         self.board = SudokuBoard(self, s)
 

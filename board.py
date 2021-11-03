@@ -76,95 +76,67 @@ class SudokuBoard(QWidget):
 
         grid_size = self.cell_size * 9
 
-        pen = QPen(QColor("#FCC603"), 10.0)
+        # DRAW CELL COLORS
+
+        for cell in self.sudoku.board:
+            if cell.color:
+                painter.fillRect(cell.rect(self.cell_size), cell.color)
+
+        # DRAW SELECTION
+
+        pen = QPen(QColor("#FCC603"), 10.0)  # YELLOW LINES
         pen.setCapStyle(Qt.RoundCap)
         painter.setPen(pen)
 
-        offset = 6
-        edges = tile_to_poly(self.sudoku.board, self.cell_size, self.selected, offset)
+        offset = 6  # SHIFTS THE SELECTION LINES INWARDS
 
-        for i, cell in enumerate(self.sudoku.board):
+        for edge in tile_to_poly(self.sudoku.board, self.cell_size, self.selected, offset):
+            edge.draw(painter, self.cell_size, offset)
 
-            rect = QRect(
-                cell.column * self.cell_size + grid_size // 9,
-                cell.row * self.cell_size + grid_size // 9,
-                grid_size // 9,
-                grid_size // 9
-            )
+        # DRAW ODD CIRCLES AND EVEN SQUARES CONSTRAINTS
 
-            if cell.color:
-                painter.fillRect(rect, cell.color)
-
-        for edge in edges:
-            if edge.edge_type == NORTH:
-
-                painter.drawLine(
-                    self.cell_size + edge.sx + offset,
-                    self.cell_size + edge.sy + offset,
-                    self.cell_size + edge.ex - offset,
-                    self.cell_size + edge.ey + offset
-                )
-
-            elif edge.edge_type == EAST:
-                painter.drawLine(
-                    self.cell_size + edge.sx - offset,
-                    self.cell_size + edge.sy + offset,
-                    self.cell_size + edge.ex - offset,
-                    self.cell_size + edge.ey - offset
-                )
-
-            elif edge.edge_type == SOUTH:
-                painter.drawLine(
-                    self.cell_size + edge.sx + offset,
-                    self.cell_size + edge.sy - offset,
-                    self.cell_size + edge.ex - offset,
-                    self.cell_size + edge.ey - offset
-                )
-
-            else:
-                painter.drawLine(
-                    self.cell_size + edge.sx + offset,
-                    self.cell_size + edge.sy + offset,
-                    self.cell_size + edge.ex + offset,
-                    self.cell_size + edge.ey - offset
-                )
-
-        painter.setFont(QFont("Arial Black", 8))
-
-        painter.setBrush(QBrush(QColor("#888888")))
+        painter.setBrush(QBrush(QColor("#888888")))  # MEDIUM GRAY COLOR
         painter.setPen(Qt.NoPen)
 
-        for index in self.sudoku.forced_odds:
-            cell = self.sudoku.board[index]
+        for cell in [self.sudoku.board[i] for i in self.sudoku.forced_odds]:
+            painter.drawEllipse(cell.scaled_rect(self.cell_size, factor=0.6))
 
-            rect = QRect(
-                cell.column * self.cell_size + grid_size // 9 + 10,
-                cell.row * self.cell_size + grid_size // 9 + 10,
-                grid_size // 9 - 20,
-                grid_size // 9 - 20
+        for cell in [self.sudoku.board[i] for i in self.sudoku.forced_evens]:
+            painter.drawRect(cell.scaled_rect(self.cell_size, factor=0.6))
+
+        # DRAW DIAGONALS
+
+        painter.setPen(QPen(QColor(255, 0, 0, 90), 3.0))
+
+        if self.sudoku.diagonal_top_left:
+            painter.drawLine(
+                self.cell_size, self.cell_size, self.cell_size * 10, self.cell_size * 10
             )
 
-            painter.drawEllipse(rect)
-
-        for index in self.sudoku.forced_evens:
-            cell = self.sudoku.board[index]
-
-            rect = QRect(
-                cell.column * self.cell_size + grid_size // 9 + 10,
-                cell.row * self.cell_size + grid_size // 9 + 10,
-                grid_size // 9 - 20,
-                grid_size // 9 - 20
+        if self.sudoku.diagonal_top_right:
+            painter.drawLine(
+                self.cell_size * 10, self.cell_size, self.cell_size, self.cell_size * 10
             )
 
-            painter.fillRect(rect, QColor("#888888"))
+        # DRAW THERMOMETERS
 
-        for thermo in self.sudoku.thermometers:
-            thermo.draw(painter,
-                        self.sudoku.board if self.sudoku.solve_board else self.sudoku.board_copy,
-                        self.cell_size)
+        for thermometer in self.sudoku.thermometers:
+            thermometer.draw(
+                painter,
+                self.sudoku.board,
+                self.cell_size
+            )
+
+        # DRAW CAGES
 
         for cage in self.sudoku.cages:
-            cage.draw(self.sudoku.board, painter, self.cell_size)
+            cage.draw(
+                painter,
+                self.sudoku.board,
+                self.cell_size
+            )
+
+        # DRAW RENBAN / WHISPER / PALINDROME LINES
 
         for line_type, line in self.sudoku.lines:
 
@@ -174,7 +146,7 @@ class SudokuBoard(QWidget):
             elif line_type == "RENBAN":
                 color = QColor("#ff17d1")
             else:
-                color = QColor("#8c0000")
+                color = QColor("#BBBBBB")
 
             brush = QBrush(color)
             pen = QPen(color, 10.0)
@@ -193,31 +165,17 @@ class SudokuBoard(QWidget):
 
         painter.setBrush(Qt.NoBrush)
 
+        # INDICATE CELLS SEEN BY SINGLE SELECTED CELL
+
         if len(self.selected) == 1 and self.unsolved:
 
             c = self.sudoku.board[next(iter(self.selected))]
             if c.value != 0:
                 for cell in set(self.sudoku.get_entire_column(c.index) + self.sudoku.get_entire_row(
-                    c.index) + self.sudoku.get_entire_box(c.index)):
-                    rect = QRect(
-                        cell.column * self.cell_size + grid_size // 9,
-                        cell.row * self.cell_size + grid_size // 9,
-                        grid_size // 9,
-                        grid_size // 9
-                    )
-                    painter.fillRect(rect, QColor(0, 0, 255, 50))
+                        c.index) + self.sudoku.get_entire_box(c.index)):
+                    painter.fillRect(cell.rect(self.cell_size), QColor(125, 125, 125, 50))
 
-        painter.setPen(QPen(QColor(255, 0, 0, 90), 3.0))
-
-        if self.sudoku.diagonal_top_left:
-            painter.drawLine(
-                self.cell_size, self.cell_size, self.cell_size * 10, self.cell_size * 10
-            )
-
-        if self.sudoku.diagonal_top_right:
-            painter.drawLine(
-                self.cell_size * 10, self.cell_size, self.cell_size, self.cell_size * 10
-            )
+        # DRAW GRID
 
         painter.setPen(QPen(QColor("#000"), 4.0))
         painter.drawRect(
@@ -274,30 +232,25 @@ class SudokuBoard(QWidget):
                 self.cell_size * 10
             )
 
+        # DRAW CELL CONTENTS
+
         for i, cell in enumerate(self.sudoku.board):
 
             painter.setFont(QFont("Arial Black", 20))
             painter.setPen(QPen(QColor("#000000"), 1.0))
-
-            rect = QRect(
-                cell.column * self.cell_size + grid_size // 9,
-                cell.row * self.cell_size + grid_size // 9,
-                grid_size // 9,
-                grid_size // 9
-            )
 
             if cell.color == QColor("#000000"):
                 painter.setPen(QPen(QColor("#FFFFFF"), 1.0))
 
             if cell.value != 0:
 
-                painter.drawText(rect, Qt.AlignCenter, str(cell.value))
+                painter.drawText(cell.rect(self.cell_size), Qt.AlignCenter, str(cell.value))
 
             else:
                 size = 10 if len(cell.valid_numbers) <= 5 else 16 - len(cell.valid_numbers)
                 painter.setFont(QFont("Arial Black", size))
                 painter.setPen(QPen(QColor("#333333"), 1.0))
-                painter.drawText(rect, Qt.AlignCenter,
+                painter.drawText(cell.rect(self.cell_size), Qt.AlignCenter,
                                  ''.join(sorted(map(str, cell.valid_numbers))))
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
@@ -314,6 +267,8 @@ class SudokuBoard(QWidget):
             return
 
         location = y * 9 + x
+        if self.sudoku.board[location].value == 0:
+            print(self.sudoku.valid_numbers(location, True))
 
         if event.buttons() == Qt.LeftButton:
 
@@ -362,7 +317,10 @@ class SudokuBoard(QWidget):
 
                 # Color
                 if mode == COLOR:
-                    cell.color = COLORS[key - 49]
+                    if cell.color == COLORS[key - 49]:
+                        cell.color = None
+                    else:
+                        cell.color = COLORS[key - 49]
 
                 else:
 
@@ -371,9 +329,8 @@ class SudokuBoard(QWidget):
 
                     if mode == NORMAL:
                         self.steps_done.append((cell.index, cell.value))
-                        print(self.sudoku.valid(event.key() - 48, cell.index, True))
                         cell.value = event.key() - 48
-
+                        self.sudoku.calculate_valid_numbers()
 
                     elif mode == CENTER:
 

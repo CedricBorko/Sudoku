@@ -9,7 +9,7 @@ def main():
     app = QApplication(sys.argv)
     window = SudokuWindow()
     window.show()
-    sys.exit((app.exec_()))
+    sys.exit((app.exec()))
 
 
 if __name__ == "__main__":

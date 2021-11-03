@@ -7,7 +7,7 @@ import time
 from typing import List, Optional, Set, Tuple
 
 import numpy as np
-from PySide6.QtCore import QPoint
+from PySide6.QtCore import QPoint, QRect
 from PySide6.QtGui import QPainter, QPolygon
 
 NORTH = 0
@@ -38,6 +38,23 @@ class Cell:
     def column(self):
         return self.index % 9
 
+    def rect(self, cell_size: int):
+        return QRect(
+            self.column * cell_size + cell_size,
+            self.row * cell_size + cell_size,
+            cell_size,
+            cell_size
+        )
+
+    def scaled_rect(self, cell_size: int, factor: float = 1):
+        shift_by = int(cell_size - (cell_size * factor)) // 2
+        return QRect(
+            self.column * cell_size + cell_size + shift_by,
+            self.row * cell_size + cell_size + shift_by,
+            int(cell_size * factor),
+            int(cell_size * factor)
+        )
+
     def __repr__(self):
         return f"Cell({self.row=}, {self.column=}, {self.value=})"
 
@@ -64,6 +81,39 @@ class Edge:
 
     def __repr__(self):
         return f"({self.sx}, {self.sy}) -> ({self.ex}, {self.ey})"
+
+    def draw(self, painter: QPainter, cell_size: int, offset: int):
+        if self.edge_type == NORTH:
+            painter.drawLine(
+                cell_size + self.sx + offset,
+                cell_size + self.sy + offset,
+                cell_size + self.ex - offset,
+                cell_size + self.ey + offset
+            )
+
+        elif self.edge_type == EAST:
+            painter.drawLine(
+                cell_size + self.sx - offset,
+                cell_size + self.sy + offset,
+                cell_size + self.ex - offset,
+                cell_size + self.ey - offset
+            )
+
+        elif self.edge_type == SOUTH:
+            painter.drawLine(
+                cell_size + self.sx + offset,
+                cell_size + self.sy - offset,
+                cell_size + self.ex - offset,
+                cell_size + self.ey - offset
+            )
+
+        else:
+            painter.drawLine(
+                cell_size + self.sx + offset,
+                cell_size + self.sy + offset,
+                cell_size + self.ex + offset,
+                cell_size + self.ey - offset
+            )
 
 
 def tile_to_poly(cells: List[Cell], cell_size: int, selected: Set, inner_offset: int):
@@ -123,8 +173,8 @@ def tile_to_poly(cells: List[Cell], cell_size: int, selected: Set, inner_offset:
         if north not in selected:
 
             if (cells[get_index(west)].edge_exists[NORTH]
-                and cells[get_index(p)].row == cells[
-                    get_index(west)].row):  # Don't connect to row above
+                    and cells[get_index(p)].row == cells[
+                        get_index(west)].row):  # Don't connect to row above
 
                 edges[cells[get_index(west)].edge_id[NORTH]].ex += cell_size
                 cells[i].edge_id[NORTH] = cells[get_index(west)].edge_id[NORTH]
@@ -178,8 +228,8 @@ def tile_to_poly(cells: List[Cell], cell_size: int, selected: Set, inner_offset:
 
         if south not in selected:
             if (cells[get_index(west)].edge_exists[SOUTH]
-                and cells[get_index(p)].row == cells[
-                    get_index(west)].row):  # Don't connect to row above
+                    and cells[get_index(p)].row == cells[
+                        get_index(west)].row):  # Don't connect to row above
 
                 edges[cells[get_index(west)].edge_id[SOUTH]].ex += cell_size
                 cells[i].edge_id[SOUTH] = cells[get_index(west)].edge_id[SOUTH]
@@ -224,15 +274,15 @@ class Sudoku:
     NUMBERS = (1, 2, 3, 4, 5, 6, 7, 8, 9)
 
     def __init__(
-        self,
-        board: List[Cell],
-        king_constraint: bool = False,
-        knight_constraint: bool = False,
-        orthogonal_consecutive_constraint: bool = False,
-        orthogonal_ration_2_to_1_constraint: bool = False,
-        diagonal_top_left: bool = False,
-        diagonal_top_right: bool = False,
-        disjoint: bool = False,
+            self,
+            board: List[Cell],
+            king_constraint: bool = False,
+            knight_constraint: bool = False,
+            orthogonal_consecutive_constraint: bool = False,
+            orthogonal_ration_2_to_1_constraint: bool = False,
+            diagonal_top_left: bool = False,
+            diagonal_top_right: bool = False,
+            disjoint: bool = False,
     ):
 
         self.initial_state = copy.deepcopy(board)
@@ -360,10 +410,10 @@ class Sudoku:
             if cell.column == 1 and offset in (-11, 7):
                 continue
 
-            if cell.column == 6 and offset in (-7, 11):
+            if cell.column == 7 and offset in (-7, 11):
                 continue
 
-            if cell.column == 7 and offset in (-17, -7, 11, 19):
+            if cell.column == 8 and offset in (-17, -7, 11, 19):
                 continue
 
             neighbours.append(board_to_search[index + offset])
@@ -371,10 +421,25 @@ class Sudoku:
         return neighbours
 
     def get_orthogonals(self, index: int):
-        offsets = (-9, -1, 1, 9)
         board_to_search = self.board if self.solve_board else self.board_copy
 
-        return [board_to_search[index + offset] for offset in offsets if 0 <= index + offset <= 80]
+        offsets = (-9, -1, 1, 9)
+        orthogonal = []
+        cell = board_to_search[index]
+
+        for offset in offsets:
+            if index + offset > 80 or index + offset < 0:
+                continue
+
+            if cell.column == 0 and offset == -1:
+                continue
+
+            if cell.column == 8 and offset == 1:
+                continue
+
+            orthogonal.append(board_to_search[index + offset])
+
+        return orthogonal
 
     def get_diagonal_top_left(self):
         board_to_search = self.board if self.solve_board else self.board_copy
@@ -463,12 +528,30 @@ class Sudoku:
 
         show_constraint = show_constraints
 
+        for cell in self.get_entire_row(index):
+            if cell.value == number:
+                if show_constraint: print(number, "TWICE IN ROW", cell.row)
+                return False
+
+        for cell in self.get_entire_column(index):
+            if cell.value == number:
+                if show_constraint: print(number, "TWICE IN COLUMN", cell.column)
+                return False
+
+        for cell in self.get_entire_box(index):
+            if cell.value == number:
+                if show_constraint: print(number, "TWICE IN BOX")
+
+                return False
+
         if index in self.forced_odds and number % 2 == 0:
-            if show_constraint: print(index, "MUST BE EVEN")
+            if show_constraint:
+                print("Cell", index, "MUST BE ODD")
             return False
 
         if index in self.forced_evens and number % 2 != 0:
-            if show_constraint: print(index, "MUST BE ODD")
+            if show_constraint:
+                print("Cell", index, "MUST BE EVEN")
             return False
 
         if self.disjoint:
@@ -489,22 +572,6 @@ class Sudoku:
                         print(number, "ALREADY IN ANOTHER BOX AT BOX POSITION",
                               box_index, f"({contradicting_index})")
                     return False
-
-        for cell in self.get_entire_row(index):
-            if cell.value == number:
-                if show_constraint: print(number, "TWICE IN ROW", cell.row)
-                return False
-
-        for cell in self.get_entire_column(index):
-            if cell.value == number:
-                if show_constraint: print(number, "TWICE IN COLUMN", cell.column)
-                return False
-
-        for cell in self.get_entire_box(index):
-            if cell.value == number:
-                if show_constraint: print(number, "TWICE IN BOX")
-
-                return False
 
         if self.king_constraint:
             for cell in self.get_king_neighbours(index):

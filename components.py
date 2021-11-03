@@ -41,7 +41,7 @@ class Cage:
     def space_left(self, board: List[Cell]) -> int:
         return len([cell for cell in board if cell.index in self.cells and cell.value == 0])
 
-    def draw(self, board: List[Cell], painter: QPainter, cell_size: int):
+    def draw(self, painter: QPainter, board: List[Cell], cell_size: int):
         pen = QPen(QColor("#000000"), 3.0, Qt.DotLine)
         pen.setCapStyle(Qt.RoundCap)
         painter.setPen(pen)
@@ -158,7 +158,7 @@ class Thermometer:
 
         if number > 9 - space_after:
             if show_constraint:
-                print(number, "NOT ENOUGH SPACE AFTER")
+                print(number, "TOO MUCH SPACE AFTER")
 
             return False
 
