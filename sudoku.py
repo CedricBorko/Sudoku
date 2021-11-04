@@ -174,8 +174,8 @@ def tile_to_poly(cells: List[Cell], cell_size: int, selected: Set, inner_offset:
         if north not in selected:
 
             if (cells[get_index(west)].edge_exists[NORTH]
-                and cells[get_index(p)].row == cells[
-                    get_index(west)].row):  # Don't connect to row above
+                    and cells[get_index(p)].row == cells[
+                        get_index(west)].row):  # Don't connect to row above
 
                 edges[cells[get_index(west)].edge_id[NORTH]].ex += cell_size
                 cells[i].edge_id[NORTH] = cells[get_index(west)].edge_id[NORTH]
@@ -229,8 +229,8 @@ def tile_to_poly(cells: List[Cell], cell_size: int, selected: Set, inner_offset:
 
         if south not in selected:
             if (cells[get_index(west)].edge_exists[SOUTH]
-                and cells[get_index(p)].row == cells[
-                    get_index(west)].row):  # Don't connect to row above
+                    and cells[get_index(p)].row == cells[
+                        get_index(west)].row):  # Don't connect to row above
 
                 edges[cells[get_index(west)].edge_id[SOUTH]].ex += cell_size
                 cells[i].edge_id[SOUTH] = cells[get_index(west)].edge_id[SOUTH]
@@ -275,15 +275,15 @@ class Sudoku:
     NUMBERS = (1, 2, 3, 4, 5, 6, 7, 8, 9)
 
     def __init__(
-        self,
-        board: List[Cell],
-        king_constraint: bool = False,
-        knight_constraint: bool = False,
-        orthogonal_consecutive_constraint: bool = False,
-        orthogonal_ration_2_to_1_constraint: bool = False,
-        diagonal_top_left: bool = False,
-        diagonal_top_right: bool = False,
-        disjoint: bool = False,
+            self,
+            board: List[Cell],
+            king_constraint: bool = False,
+            knight_constraint: bool = False,
+            orthogonal_consecutive_constraint: bool = False,
+            orthogonal_ration_2_to_1_constraint: bool = False,
+            diagonal_top_left: bool = False,
+            diagonal_top_right: bool = False,
+            disjoint: bool = False,
     ):
 
         self.initial_state = copy.deepcopy(board)
@@ -459,6 +459,31 @@ class Sudoku:
         return sorted([cell for cell in board_to_search if cell.value == 0],
                       key=lambda c: len(c.valid_numbers))
 
+    def get_disjoint_cells(self, index: int):
+        this_box = self.get_entire_box(index)
+        box_index = [cell.index for cell in this_box].index(index)
+
+        return [box[box_index].index for box in self.boxes()]
+
+    def sees(self, index: int):
+        neighbours = self.get_entire_box(index) + self.get_entire_row(index) + self.get_entire_column(index)
+        if self.knight_constraint:
+            neighbours += self.get_knight_neighbours(index)
+
+        if self.king_constraint:
+            neighbours += self.get_king_neighbours(index)
+
+        if self.disjoint:
+            neighbours += self.get_disjoint_cells(index)
+
+        if self.diagonal_top_left and index in [c.index for c in self.get_diagonal_top_left()]:
+            neighbours += self.get_diagonal_top_left()
+
+        if self.diagonal_top_right and index in [c.index for c in self.get_diagonal_top_right()]:
+            neighbours += self.get_diagonal_top_right()
+
+        return set(neighbours)
+
     def next_step(self):
 
         self.calculate_valid_numbers()
@@ -492,9 +517,6 @@ class Sudoku:
 
         return None
 
-        # RETURN INDEX TO SHOW CURRENT POSITION ON GRID
-        return best_cell.index
-
     def calculate_valid_numbers(self):
         for cell in self.board:
             cell.valid_numbers = self.valid_numbers(cell.index)
@@ -514,6 +536,7 @@ class Sudoku:
 
         cell = self.board[index]
 
+
         for number in cell.valid_numbers:
             cell.value = number
 
@@ -521,7 +544,6 @@ class Sudoku:
                 return True
 
             cell.value = 0
-
         return False
 
     def valid(self, number: int, index: int, show_constraints: bool = False):

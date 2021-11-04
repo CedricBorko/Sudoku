@@ -82,10 +82,8 @@ class SudokuWindow(QMainWindow):
             "000000600"
         )"""
 
-        # s.lines.append(GermanWhispersLine(s, [40, 41, 42]))
+        s.lines.append(PalindromeLine(s, [40, 41, 51]))
         # s.lines.append(PalindromeLine(s, [31, 32, 33, 43, 44]))
-
-        # s.calculate_valid_numbers()
 
         """
         
@@ -108,12 +106,9 @@ class SudokuWindow(QMainWindow):
         
         """
 
-        s.diagonal_top_left = True
         s.thermometers.append(Thermometer(s, [18, 9, 0, 1, 11, 19]))
         s.thermometers.append(Thermometer(s, [78, 69, 60, 61, 62, 71, 80, 79, 70]))
-
-        # s.calculate_valid_numbers()
-        print(s.try_solve())
+        s.calculate_valid_numbers()
 
         """
         s.cages.append(Cage([9, 18], 3))

@@ -149,12 +149,11 @@ class SudokuBoard(QWidget):
 
         # INDICATE CELLS SEEN BY SINGLE SELECTED CELL
 
-        if len(self.selected) == 1 and self.unsolved:
+        if len(self.selected) == 1:
 
             c = self.sudoku.board[next(iter(self.selected))]
             if c.value != 0:
-                for cell in set(self.sudoku.get_entire_column(c.index) + self.sudoku.get_entire_row(
-                    c.index) + self.sudoku.get_entire_box(c.index)):
+                for cell in self.sudoku.sees(c.index):
                     painter.fillRect(cell.rect(self.cell_size), QColor(125, 125, 125, 50))
 
         # DRAW GRID
@@ -320,7 +319,6 @@ class SudokuBoard(QWidget):
                         else:
                             cell.valid_numbers.add(str(event.key() - 48))
 
-
                     else:
                         if str(event.key() - 48) in cell.corner:
                             cell.corner.remove(str(event.key() - 48))
@@ -348,6 +346,22 @@ class SudokuBoard(QWidget):
         if event.key() == Qt.Key_Z and event.modifiers() == Qt.ControlModifier:
             step = self.steps_done.pop()
             self.sudoku.board[step[0]].value = step[1]
+            self.sudoku.calculate_valid_numbers()
+
+        if len(self.selected) == 1:
+            index = next(iter(self.selected))
+
+            if event.key() in (Qt.Key_W, Qt.Key_Up) and index >= 9:
+                self.selected = {index - 9}
+
+            if event.key() in (Qt.Key_A, Qt.Key_Left) and index % 9 != 0:
+                self.selected = {index - 1}
+
+            if event.key() in (Qt.Key_S, Qt.Key_Down) and index <= 71:
+                self.selected = {index + 9}
+
+            if event.key() in (Qt.Key_D, Qt.Key_Right) and index % 9 != 8:
+                self.selected = {index + 1}
 
         self.update()
 

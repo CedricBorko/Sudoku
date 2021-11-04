@@ -39,6 +39,9 @@ class LineConstraint(Constraint):
     def on_end(self, cell_index: int):
         return cell_index in (self.indices[0], self.indices[-1])
 
+    def distance(self, i1: int, i2: int):
+        return math.fabs(self.position_on_line(i1) - self.position_on_line(i2))
+
     def draw(self, painter: QPainter, cell_size: int):
 
         pen = QPen(self.color, 14.0)
@@ -70,6 +73,9 @@ class GermanWhispersLine(LineConstraint):
     to the cell before and after
     """
 
+    HIGHS = {6, 7, 8, 9}
+    LOWS = {1, 2, 3, 4}
+
     def __init__(self, sudoku: Sudoku, indices: List[int]):
         super().__init__(sudoku, indices)
 
@@ -83,6 +89,20 @@ class GermanWhispersLine(LineConstraint):
 
         prev = self.previous_cell(index)
         nxt = self.next_cell(index)
+
+        hit = None
+        for cell in self.cells:
+            if cell.value != 0:
+                hit = cell
+        if hit:
+            if hit.value in self.LOWS:
+                if int(self.distance(hit.index, index)) % 2 == 0 and number not in self.LOWS:
+                    return False
+
+            if hit.value in self.HIGHS:
+                if int(self.distance(hit.index, index)) % 2 == 0 and number not in self.HIGHS:
+                    return False
+
 
         if prev and prev.value != 0 and math.fabs(prev.value - number) < 5:
             return False
@@ -141,6 +161,8 @@ class Thermometer(LineConstraint):
 
         return cells
 
+
+
     def enough_space(self, index: int, number: int):
 
         seq = self.empties(index)
@@ -180,7 +202,7 @@ class Thermometer(LineConstraint):
         return True
 
     def valid(self, index: int, number: int) -> bool:
-        NUMBERS = [9, 8, 7, 6, 5, 4, 3, 2, 1]
+
 
         line_pos = self.position_on_line(index)
 
