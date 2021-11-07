@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QFrame, QLabel, QHBoxLay
 
 from board import SudokuBoard
 from components.border_constraints import KropkiDot, XVSum, LessGreater, Quadruple
-from componentss import Cage
+
 from menus import ConstraintsMenu, ComponentsMenu
 from sudoku import Sudoku
 from components.line_constraints import GermanWhispersLine, PalindromeLine, Thermometer, Arrow
@@ -96,6 +96,8 @@ class SudokuWindow(QMainWindow):
         self.constraints_btn.setFixedHeight(40)
         self.constraints_btn.setMinimumWidth(200)
 
+        self.current_component_label = QLabel(self)
+
         ############################################################################################
 
         self.board = SudokuBoard(self, self.sudoku)
@@ -109,6 +111,10 @@ class SudokuWindow(QMainWindow):
         self.settings_layout.setContentsMargins(20, 20, 20, 20)
         self.settings_layout.setSpacing(10)
 
+        self.components_layout = QGridLayout()
+        self.components_layout.setContentsMargins(20, 20, 20, 20)
+        self.components_layout.setSpacing(10)
+
         self.central_layout.addWidget(self.title_bar, 0, 0, 1, 1)
 
         self.content_layout = QGridLayout()
@@ -116,14 +122,17 @@ class SudokuWindow(QMainWindow):
         self.content_layout.setSpacing(10)
 
         self.content_layout.addWidget(self.board, 0, 0, 2, 1)
-        self.content_layout.addWidget(self.constraints_btn, 0, 1, 1, 1)
-        self.content_layout.addWidget(self.component_btn, 1, 1, 1, 1)
+        self.content_layout.addLayout(self.components_layout, 1, 1, 1, 1)
 
-        self.central_layout.addLayout(self.content_layout, 1, 0, 1, 1)
-        self.central_layout.addLayout(self.settings_layout, 2, 0, 1, 1)
+        self.components_layout.addWidget(self.constraints_btn, 0, 0, 1, 1)
+        self.components_layout.addWidget(self.component_btn, 0, 1, 1, 1)
+        self.components_layout.addWidget(self.current_component_label, 1, 0, 1, 1)
 
         self.settings_layout.addWidget(self.mode_switch, 0, 0, 1, 1)
         self.settings_layout.addWidget(self.solve_btn, 0, 1, 1, 1)
+
+        self.central_layout.addLayout(self.content_layout, 1, 0, 1, 1)
+        self.central_layout.addLayout(self.settings_layout, 2, 0, 1, 1)
 
         # Resizing
 

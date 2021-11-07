@@ -27,6 +27,9 @@ class LineConstraint(Constraint):
 
         return self.sudoku.board[self.indices[length // 2]],
 
+    def check_valid(self):
+        return True
+
     def next_cell(self, cell_index: int) -> Cell:
         if cell_index != self.indices[-1]:
             n = self.indices[self.position_on_line(cell_index) + 1]
@@ -47,8 +50,14 @@ class LineConstraint(Constraint):
 
         pen = QPen(self.color, 10.0)
         pen.setCapStyle(Qt.RoundCap)
+        painter.setBrush(QBrush(self.color))
 
         painter.setPen(pen)
+
+        if len(self.indices) == 1:
+            painter.drawEllipse(
+                self.cells[0].scaled_rect(cell_size, 0.1)
+            )
 
         for cell in self.cells:
             if cell == self.cells[-1]:
@@ -77,6 +86,7 @@ class GermanWhispersLine(LineConstraint):
     to the cell before and after
     """
 
+    NAME = "German Whispers Line"
     HIGHS = {6, 7, 8, 9}
     LOWS = {1, 2, 3, 4}
 
@@ -84,6 +94,11 @@ class GermanWhispersLine(LineConstraint):
         super().__init__(sudoku, indices)
 
         self.color = QColor("#10b558")
+
+    def __eq__(self, other):
+        if not isinstance(other, GermanWhispersLine):
+            return False
+        return self.indices == other.indices
 
     def valid(self, index: int, number: int):
         if number == 5:
@@ -122,6 +137,8 @@ class GermanWhispersLine(LineConstraint):
 
 
 class PalindromeLine(LineConstraint):
+    NAME = "Palindrome Line"
+
     def __init__(self, sudoku: "Sudoku", indices: List[int]):
         super().__init__(sudoku, indices)
         for index in self.indices:
@@ -144,9 +161,15 @@ class PalindromeLine(LineConstraint):
 
 
 class Thermometer(LineConstraint):
+    NAME = "Thermometer"
+
     def __init__(self, sudoku: "Sudoku", indices: List[int]):
         super().__init__(sudoku, indices)
-        self.bulb = self.sudoku.board[self.indices[0]]
+
+        if self.indices:
+            self.bulb = self.sudoku.board[self.indices[0]]
+        else:
+            self.bulb = None
 
     def __repr__(self):
         return ' -> '.join(map(str, self.indices))
@@ -245,6 +268,11 @@ class Thermometer(LineConstraint):
 
         return True
 
+    def check_valid(self):
+        if len(self.indices) <= 1 or len(self.indices) > 9:
+            return False
+        return True
+
     def draw(self, painter: QPainter, cell_size: int):
 
         brush = QBrush(QColor("#BBBBBB"))
@@ -254,6 +282,8 @@ class Thermometer(LineConstraint):
         pen.setCapStyle(Qt.RoundCap)
         painter.setPen(pen)
 
+        if not self.bulb:
+            return
         row, col = self.bulb.row, self.bulb.column
 
         painter.drawEllipse(
@@ -279,6 +309,8 @@ class Thermometer(LineConstraint):
 
 
 class Arrow(LineConstraint):
+    NAME = "Arrow"
+
     def __init__(self, sudoku: "Sudoku", indices: List[int], one_cell_sum: bool = True):
         super().__init__(sudoku, indices)
 

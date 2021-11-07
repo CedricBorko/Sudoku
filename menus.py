@@ -3,7 +3,7 @@ from __future__ import annotations
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QMenu
 
-from components.border_constraints import XVSum, KropkiDot, LessGreater, Quadruple
+from components.border_constraints import XVSum, KropkiDot, LessGreater, Quadruple, Constraint
 from components.line_constraints import Arrow, Thermometer, GermanWhispersLine, PalindromeLine
 
 
@@ -25,17 +25,46 @@ class ComponentsMenu(QMenu):
             lambda: self.set_border_component(Quadruple(self.sudoku, [], []))
         )
 
+        self.thermometer_action = QAction("Thermometer")
+        self.thermometer_action.triggered.connect(
+            lambda: self.set_cell_component(Thermometer(self.sudoku, []))
+        )
+
+        self.german_whispers_action = QAction("German Whispers")
+        self.german_whispers_action.triggered.connect(
+            lambda: self.set_cell_component(GermanWhispersLine(self.sudoku, []))
+        )
+
+        self.palindrome_action = QAction("Palindrome")
+        self.palindrome_action.triggered.connect(
+            lambda: self.set_cell_component(PalindromeLine(self.sudoku, []))
+        )
+
         self.addMenu(self.kropki_menu)
         self.addMenu(self.xv_menu)
         self.addMenu(self.less_greater)
         self.addAction(self.quadruple_action)
+        self.addAction(self.thermometer_action)
+        self.addAction(self.german_whispers_action)
+        self.addAction(self.palindrome_action)
+
+
 
     def update(self) -> None:
         self.window_.update()
 
-    def set_border_component(self, component):
+    def set_border_component(self, component: Constraint):
         self.window_.board.making_quadruple = isinstance(component, Quadruple)
         self.window_.board.border_component = component
+        self.window_.board.cell_component = None
+
+        self.window_.current_component_label.setText(f"Creating {component.NAME}")
+
+    def set_cell_component(self, component: Constraint):
+        self.window_.board.border_component = None
+        self.window_.board.cell_component = component
+        self.window_.current_component_label.setText(f"Creating {component.NAME}")
+
 
 
 class KropkiSubMenu(QMenu):

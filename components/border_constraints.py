@@ -7,7 +7,7 @@ from typing import List
 from PySide6.QtCore import QPoint, QRect
 from PySide6.QtGui import QPainter, QBrush, QColor, QPen, QFont, Qt
 
-from sudoku import Sudoku
+from sudoku import Sudoku, Cell
 
 
 class Constraint(ABC):
@@ -38,7 +38,7 @@ class BorderConstraint(Constraint):
     def other_cell(self, index: int):
         return self.cells[0] if self.cells[0].index != index else self.cells[1]
 
-    def pos(self, index: int):
+    def pos(self, index: int) -> int:
         return self.indices.index(index)
 
     def deep_compare(self, other) -> bool:
@@ -64,6 +64,8 @@ class BorderConstraint(Constraint):
 
 
 class KropkiDot(BorderConstraint):
+    NAME = "Kropki Dot"
+
     def __init__(self, sudoku: "Sudoku", indices: List[int], consecutive: bool = True):
         super().__init__(sudoku, indices)
 
@@ -84,7 +86,7 @@ class KropkiDot(BorderConstraint):
             "white": self.consecutive
         }
 
-    def valid(self, index: int, number: int):
+    def valid(self, index: int, number: int) -> bool:
 
         other = self.other_cell(index)
 
@@ -139,6 +141,8 @@ class KropkiDot(BorderConstraint):
 
 
 class XVSum(BorderConstraint):
+    NAME = "XV Sum"
+
     def __init__(self, sudoku: "Sudoku", indices: List[int], total: int = 5):
         super().__init__(sudoku, indices)
 
@@ -156,7 +160,7 @@ class XVSum(BorderConstraint):
             return self.total == other.total
         return False
 
-    def valid(self, index: int, number: int):
+    def valid(self, index: int, number: int) -> bool:
 
         if number >= self.total:
             return False
@@ -175,57 +179,44 @@ class XVSum(BorderConstraint):
 
         c1 = self.cells[0]
         c2 = self.cells[1]
-        rect = c1.scaled_rect(cell_size, 0.4)
+        rect_size = cell_size // 3
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor(255, 255, 255)))
 
-        if c1.row - c2.row == -1:  # C1 above C2
-            rect.setY(rect.y() + cell_size // 2)
-            painter.setPen(QPen(QColor(255, 255, 255), 2.0 if c2.row % 3 != 0 else 5.0))
-
-            painter.drawLine(
-                cell_size + cell_size * c2.column + cell_size // 4,
-                cell_size + cell_size * c2.row,
-                cell_size + cell_size * (c2.column + 1) - cell_size // 4,
-                cell_size + cell_size * c2.row
+        if c1.row == c2.row:
+            painter.drawEllipse(
+                QPoint(
+                    cell_size + cell_size * max(c1.column, c2.column),
+                    cell_size + cell_size * c2.row + cell_size // 2
+                ),
+                cell_size // 4, cell_size // 4
             )
 
-        elif c1.row - c2.row == 1:
-            rect.setY(rect.y() - cell_size // 2)
-
-            painter.setPen(QPen(QColor(255, 255, 255), 2.0 if c1.row % 3 != 0 else 5.0))
-
-            painter.drawLine(
-                cell_size + cell_size * c1.column + cell_size // 4,
-                cell_size + cell_size * c1.row,
-                cell_size + cell_size * (c2.column + 1) - cell_size // 4,
-                cell_size + cell_size * c1.row
-            )
-
-        elif c1.column - c2.column == -1:
-
-            rect.setX(rect.x() + cell_size // 2)
-            painter.setPen(QPen(QColor(255, 255, 255), 2.0 if c2.column % 3 != 0 else 5.0))
-
-            painter.drawLine(
-                cell_size + cell_size * c2.column,
-                cell_size + cell_size * min(c2.row, 8) + cell_size // 4,
-                cell_size + cell_size * c2.column,
-                cell_size + cell_size * (min(c2.row, 8) + 1) - cell_size // 4,
+            rect = QRect(
+                cell_size + cell_size * max(c1.column, c2.column) - rect_size // 2,
+                cell_size + cell_size * c2.row + cell_size // 2 - rect_size // 2,
+                rect_size,
+                rect_size
             )
 
         else:
-            rect.setX(rect.x() - cell_size // 2)
-            painter.setPen(QPen(QColor(255, 255, 255), 2.0 if c1.column % 3 != 0 else 5.0))
 
-            painter.drawLine(
-                cell_size + cell_size * c1.column,
-                cell_size + cell_size * min(c2.row, 8) + cell_size // 4,
-                cell_size + cell_size * c1.column,
-                cell_size + cell_size * (min(c2.row, 8) + 1) - cell_size // 4,
+            painter.drawEllipse(
+                QPoint(
+                    cell_size + cell_size * c2.column + cell_size // 2,
+                    cell_size + cell_size * max(c1.row, c2.row)
+                ),
+                cell_size // 4, cell_size // 4
             )
 
-        rect.setWidth(int(cell_size * 0.4))
-        rect.setHeight(int(cell_size * 0.4))
-        painter.setFont(QFont("Verdana", 14))
+            rect = QRect(
+                cell_size + cell_size * c2.column + cell_size // 2 - rect_size // 2,
+                cell_size + cell_size * max(c1.row, c2.row) - rect_size // 2,
+                rect_size,
+                rect_size
+            )
+
+        painter.setFont(QFont("Verdana", 14 if self.total != 15 else 12, QFont.Bold))
 
         painter.setPen(QPen(QColor(0, 0, 0), 1.0))
 
@@ -235,6 +226,7 @@ class XVSum(BorderConstraint):
 
 
 class LessGreater(BorderConstraint):
+    NAME = "Less or Greater"
     def __init__(self, sudoku: "Sudoku", indices: List[int], less: bool):
         super().__init__(sudoku, indices)
 
@@ -264,8 +256,6 @@ class LessGreater(BorderConstraint):
 
         if self.pos(index) == 1 and self.other_cell(index).value > number:
             return False
-
-        t = 4
 
         return True
 
@@ -351,19 +341,21 @@ class LessGreater(BorderConstraint):
 
 
 class Quadruple(BorderConstraint):
+    NAME = "Quadruple"
+
     def __init__(self, sudoku: "Sudoku", indices: List[int], numbers: List[int]):
         super().__init__(sudoku, indices)
 
         self.numbers = numbers
         self.selected = False
 
-    def deep_compare(self, other):
+    def deep_compare(self, other) -> bool:
         if isinstance(other, Quadruple):
             return sorted(self.numbers) == sorted(other.numbers)
 
         return False
 
-    def empties(self):
+    def empties(self) -> List[Cell]:
         return [cell for cell in self.cells if cell.value == 0]
 
     def valid(self, index: int, number: int):

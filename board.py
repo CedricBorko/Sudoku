@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 import copy
-import multiprocessing
-import threading
+from typing import List
 
-from PySide6.QtCore import QRect, Qt, QPoint, QObject, QEvent, QTimer
-from PySide6.QtGui import QPaintEvent, QPainter, QPen, QColor, QResizeEvent, QMouseEvent, QFont, \
-    QKeyEvent, QEnterEvent, QPolygon, QBrush
-from PySide6.QtWidgets import QWidget, QSizePolicy, QGridLayout
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtGui import QPaintEvent, QPainter, QPen, QColor, QMouseEvent, QFont, \
+    QKeyEvent, QBrush
+from PySide6.QtWidgets import QWidget
 
-from components.border_constraints import KropkiDot, XVSum, LessGreater, Quadruple
-from components.line_constraints import Arrow
+from components.border_constraints import XVSum, Quadruple
+from components.line_constraints import Thermometer
 from sudoku import Sudoku
 from sudoku import tile_to_poly
 
@@ -59,11 +58,16 @@ class SudokuBoard(QWidget):
         self.setFixedSize(11 * self.cell_size, 11 * self.cell_size)
 
         self.border_component = None
+        self.cell_component = None
+
         self.selected_border = None
+        self.selected_cells = []
         self.making_quadruple = False
 
         self.x_pressed = False
         self.v_pressed = False
+
+        self.cell_component_selected = False
 
     def solve_board(self):
         self.sudoku.brute_force_time = 5
@@ -104,7 +108,8 @@ class SudokuBoard(QWidget):
         offset = 6  # SHIFTS THE SELECTION LINES INWARDS
 
         for edge in tile_to_poly(self.sudoku.board, self.cell_size, self.selected, offset):
-            edge.draw(painter, self.cell_size, offset)
+            if self.cell_component is None:
+                edge.draw(painter, self.cell_size, offset)
 
         if len(self.selected) == 1:
 
@@ -156,11 +161,6 @@ class SudokuBoard(QWidget):
 
         for line in self.sudoku.lines:
             line.draw(painter, self.cell_size)
-
-            """elif line_type == "RENBAN":
-                color = QColor("#ff17d1")
-            else:
-                color = QColor("#BBBBBB")"""
 
         painter.setBrush(Qt.NoBrush)
 
@@ -318,6 +318,28 @@ class SudokuBoard(QWidget):
         elif event.buttons() == Qt.RightButton and location in self.selected:
             self.selected.remove(location)
 
+        if self.cell_component is not None:
+
+            for cmp in self.sudoku.lines:
+                if location in cmp.indices and cmp is not self.cell_component:
+                    if event.modifiers() == Qt.ShiftModifier:
+                        self.cell_component = cmp
+                        print(self.cell_component)
+                        self.cell_component_selected = True
+
+                        break
+                    else:
+                        self.sudoku.lines.remove(cmp)
+                        del cmp
+                        self.update()
+                        self.cell_component_selected = False
+                        return
+
+            if self.cell_component not in self.sudoku.lines:
+                self.sudoku.lines.append(self.cell_component)
+                self.cell_component.indices.append(location)
+                self.update()
+
         self.update()
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
@@ -328,18 +350,67 @@ class SudokuBoard(QWidget):
         x = (event.x() - self.cell_size) // self.cell_size
         y = (event.y() - self.cell_size) // self.cell_size
 
+        cell_x = (event.x() - self.cell_size) % self.cell_size
+        cell_y = (event.y() - self.cell_size) % self.cell_size
+
         if not (0 <= x <= 8 and 0 <= y <= 8):
             return
 
         new_location = y * 9 + x
 
-        if event.buttons() == Qt.LeftButton and self.border_component is None:
+        not_on_border = (
+            10 <= cell_x <= self.cell_size - 10 and 10 <= cell_y <= self.cell_size - 10)
+
+        if event.buttons() == Qt.LeftButton and self.border_component is None and not_on_border:
             self.selected.add(new_location)
-            self.update()
 
         elif event.buttons() == Qt.RightButton and new_location in self.selected:
             self.selected.remove(new_location)
+
+        if self.cell_component is not None and not_on_border:
+
+            for cmp in self.sudoku.lines:
+                if isinstance(cmp, Thermometer) and isinstance(self.cell_component, Thermometer):
+
+                    if cmp is not self.cell_component and new_location == cmp.bulb.index:
+                        return
+
+            if self.cell_component not in self.sudoku.lines:
+                self.sudoku.lines.append(self.cell_component)
+            else:
+                self.cell_component_selected = False
+
+            if new_location not in self.cell_component.indices:
+                if not self.is_orthogonal(new_location, self.cell_component.indices):
+                    return
+                else:
+                    if isinstance(self.cell_component, Thermometer) and len(
+                        self.cell_component.indices) > 8:
+                        return
+
+                self.cell_component.indices.append(new_location)
+                if isinstance(self.cell_component, Thermometer):
+                    self.cell_component.bulb = self.sudoku.board[self.cell_component.indices[0]]
+
+            else:
+                if new_location != self.cell_component.indices[-1]:
+                    return
+
             self.update()
+
+        self.update()
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if self.cell_component is not None and self.cell_component.indices:
+            if not self.cell_component.check_valid():
+                self.sudoku.lines.remove(self.cell_component)
+
+            if not self.cell_component_selected:
+                self.cell_component = copy.copy(self.cell_component)
+                self.cell_component.indices = []
+
+            self.selected.clear()
+        self.update()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         key = event.key()
@@ -352,6 +423,15 @@ class SudokuBoard(QWidget):
 
         if key == Qt.Key_X:
             self.x_pressed = True
+
+        if event.key() == Qt.Key_Escape:
+            self.border_component = None
+            self.making_quadruple = False
+            self.cell_component = None
+
+            for quad in [quad for quad in self.sudoku.border_constraints if
+                         isinstance(quad, Quadruple)]:
+                quad.selected = False
 
         # 1 = 49 ... 9 = 57
         mode = self.mode_switch.currentIndex() + 4
@@ -444,14 +524,6 @@ class SudokuBoard(QWidget):
             for i in self.selected:
                 if self.sudoku.initial_state[i].value == 0:
                     self.sudoku.board[i].value = 0
-
-        if event.key() == Qt.Key_Escape:
-            self.border_component = None
-            self.making_quadruple = False
-
-            for quad in [quad for quad in self.sudoku.border_constraints if
-                         isinstance(quad, Quadruple)]:
-                quad.selected = False
 
         if event.key() == Qt.Key_A and event.modifiers() == Qt.ControlModifier:
             self.selected = {i for i in range(81)}
@@ -552,3 +624,8 @@ class SudokuBoard(QWidget):
             else:
                 return None
                 # NO BORDER HIT
+
+    def is_orthogonal(self, location: int, lst: List[int]):
+        if len(lst) <= 1:
+            return True
+        return location in [c.index for c in self.sudoku.get_king_neighbours(lst[-1])]
