@@ -265,7 +265,7 @@ class LessGreater(BorderConstraint):
         if self.pos(index) == 1 and self.other_cell(index).value > number:
             return False
 
-        t = 9
+        t = 4
 
         return True
 
