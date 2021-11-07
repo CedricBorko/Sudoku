@@ -2,14 +2,20 @@ from __future__ import annotations
 import copy
 import itertools
 import math
+import multiprocessing
+import os
 import random
 import sys
+import threading
 import time
 from typing import List, Optional, Set, Tuple
 
 import numpy as np
-from PySide6.QtCore import QPoint, QRect
+from PySide6.QtCore import QPoint, QRect, QTimer
 from PySide6.QtGui import QPainter, QPolygon
+from PySide6.QtWidgets import QFileDialog
+
+from utils import StoppableThread, uniquify
 
 NORTH = 0
 EAST = 1
@@ -174,8 +180,8 @@ def tile_to_poly(cells: List[Cell], cell_size: int, selected: Set, inner_offset:
         if north not in selected:
 
             if (cells[get_index(west)].edge_exists[NORTH]
-                    and cells[get_index(p)].row == cells[
-                        get_index(west)].row):  # Don't connect to row above
+                and cells[get_index(p)].row == cells[
+                    get_index(west)].row):  # Don't connect to row above
 
                 edges[cells[get_index(west)].edge_id[NORTH]].ex += cell_size
                 cells[i].edge_id[NORTH] = cells[get_index(west)].edge_id[NORTH]
@@ -229,8 +235,8 @@ def tile_to_poly(cells: List[Cell], cell_size: int, selected: Set, inner_offset:
 
         if south not in selected:
             if (cells[get_index(west)].edge_exists[SOUTH]
-                    and cells[get_index(p)].row == cells[
-                        get_index(west)].row):  # Don't connect to row above
+                and cells[get_index(p)].row == cells[
+                    get_index(west)].row):  # Don't connect to row above
 
                 edges[cells[get_index(west)].edge_id[SOUTH]].ex += cell_size
                 cells[i].edge_id[SOUTH] = cells[get_index(west)].edge_id[SOUTH]
@@ -275,15 +281,8 @@ class Sudoku:
     NUMBERS = (1, 2, 3, 4, 5, 6, 7, 8, 9)
 
     def __init__(
-            self,
-            board: List[Cell],
-            king_constraint: bool = False,
-            knight_constraint: bool = False,
-            orthogonal_consecutive_constraint: bool = False,
-            orthogonal_ration_2_to_1_constraint: bool = False,
-            diagonal_top_left: bool = False,
-            diagonal_top_right: bool = False,
-            disjoint: bool = False,
+        self,
+        board: List[Cell],
     ):
 
         self.initial_state = copy.deepcopy(board)
@@ -293,21 +292,33 @@ class Sudoku:
 
         self.solve_board = True
 
-        self.king_constraint = king_constraint
-        self.knight_constraint = knight_constraint
-        self.orthogonal_consecutive_constraint = orthogonal_consecutive_constraint
-        self.orthogonal_ration_2_to_1_constraint = orthogonal_ration_2_to_1_constraint
-        self.diagonal_top_left = diagonal_top_left
-        self.diagonal_top_right = diagonal_top_right
-        self.disjoint = disjoint
+        self.diagonal_positive = False
+        self.diagonal_negative = False
 
-        self.thermometers: List[Thermometer] = []
-        self.cages: List[Cage] = []
+        self.antiking = False
+        self.antiknight = False
+
+        self.disjoint_groups = False
+        self.nonconsecutive = False
+
+        self.cages: List["Cage"] = []
 
         self.lines = []
+        self.border_constraints = []
 
         self.forced_odds: List[int] = []
         self.forced_evens: List[int] = []
+
+        self.brute_force_time = 5
+
+    def start_process(self):
+        thread = StoppableThread(target=self.brute_force_countdown)
+        thread.start()
+
+    def brute_force_countdown(self):
+        while self.brute_force_time > 0:
+            self.brute_force_time -= 1
+            time.sleep(1)
 
     @classmethod
     def from_file(cls):
@@ -391,7 +402,23 @@ class Sudoku:
         board_to_search = self.board if self.solve_board else self.board_copy
 
         offsets = (-10, -9, -8, -1, 1, 8, 9, 10)
-        return [board_to_search[index + offset] for offset in offsets if 0 <= index + offset <= 80]
+        cell = board_to_search[index]
+        neighbours = []
+
+        for offset in offsets:
+
+            if index + offset > 80 or index + offset < 0:
+                continue
+
+            if cell.column == 0 and offset in (-10, -1, 8):
+                continue
+
+            if cell.column == 8 and offset in (-8, 1, 10):
+                continue
+
+            neighbours.append(board_to_search[index + offset])
+
+        return neighbours
 
     def get_knight_neighbours(self, index: int):
         board_to_search = self.board if self.solve_board else self.board_copy
@@ -463,24 +490,32 @@ class Sudoku:
         this_box = self.get_entire_box(index)
         box_index = [cell.index for cell in this_box].index(index)
 
-        return [box[box_index].index for box in self.boxes()]
+        return [box[box_index] for box in self.boxes()]
 
     def sees(self, index: int):
-        neighbours = self.get_entire_box(index) + self.get_entire_row(index) + self.get_entire_column(index)
-        if self.knight_constraint:
+        neighbours = self.get_entire_box(index) + self.get_entire_row(
+            index) + self.get_entire_column(index)
+        if self.antiknight:
             neighbours += self.get_knight_neighbours(index)
 
-        if self.king_constraint:
+        if self.antiking:
             neighbours += self.get_king_neighbours(index)
 
-        if self.disjoint:
+        if self.disjoint_groups:
             neighbours += self.get_disjoint_cells(index)
 
-        if self.diagonal_top_left and index in [c.index for c in self.get_diagonal_top_left()]:
+        if self.diagonal_negative and index in [c.index for c in self.get_diagonal_top_left()]:
             neighbours += self.get_diagonal_top_left()
 
-        if self.diagonal_top_right and index in [c.index for c in self.get_diagonal_top_right()]:
+        if self.diagonal_positive and index in [c.index for c in self.get_diagonal_top_right()]:
             neighbours += self.get_diagonal_top_right()
+
+        if self.nonconsecutive:
+            for cell in self.board:
+                if cell.value not in (self.board[index].value + 1, self.board[index].value - 1):
+                    continue
+
+                neighbours += self.get_orthogonals(cell.index)
 
         return set(neighbours)
 
@@ -524,10 +559,14 @@ class Sudoku:
     def try_solve(self):
         before = copy.deepcopy(self.board)
         possible = self.solve()
+
         self.board = before
         return possible
 
     def solve(self):
+        if self.brute_force_time == 0:
+            return False
+
         self.calculate_valid_numbers()
         index = self.next_empty()
 
@@ -535,7 +574,6 @@ class Sudoku:
             return True
 
         cell = self.board[index]
-
 
         for number in cell.valid_numbers:
             cell.value = number
@@ -578,7 +616,7 @@ class Sudoku:
                 print("Cell", index, "MUST BE EVEN")
             return False
 
-        if self.disjoint:
+        if self.disjoint_groups:
             this_box = self.get_entire_box(index)
             box_index = [cell.index for cell in this_box].index(index)
 
@@ -597,7 +635,7 @@ class Sudoku:
                               box_index, f"({contradicting_index})")
                     return False
 
-        if self.king_constraint:
+        if self.antiking:
             for cell in self.get_king_neighbours(index):
 
                 if cell.value == number:
@@ -606,7 +644,7 @@ class Sudoku:
 
                     return False
 
-        if self.knight_constraint:
+        if self.antiknight:
             for cell in self.get_knight_neighbours(index):
                 if cell.value == number:
                     if show_constraint: print(number, "KNIGHTS MOVE APART FROM", cell.value, "in",
@@ -614,7 +652,7 @@ class Sudoku:
 
                     return False
 
-        if self.orthogonal_consecutive_constraint:
+        if self.nonconsecutive:
             consecutives = {number - 1, number + 1}.intersection({1, 2, 3, 4, 5, 6, 7, 8, 9})
             for cell in self.get_orthogonals(index):
                 if cell.value in consecutives:
@@ -623,21 +661,7 @@ class Sudoku:
                         print(number, "CONSECUTIVE WITH", cell.value, "in", cell.index)
                     return False
 
-        if self.orthogonal_ration_2_to_1_constraint:
-            if number % 2 == 0:
-                candidates = {number * 2, number // 2}.intersection({1, 2, 3, 4, 5, 6, 7, 8, 9})
-            else:
-                candidates = {number * 2}.intersection({1, 2, 3, 4, 5, 6, 7, 8, 9})
-
-            for cell in self.get_orthogonals(index):
-
-                if cell.value in candidates:
-
-                    if show_constraint:
-                        print(number, "In A 2 TO 1 RATIO WITH", cell.value, "in", cell.index)
-                    return False
-
-        if self.diagonal_top_left:
+        if self.diagonal_negative:
             if index in [c.index for c in self.get_diagonal_top_left()]:
 
                 for cell in self.get_diagonal_top_left():
@@ -647,7 +671,7 @@ class Sudoku:
                             print(number, "TWICE ON DIAGONAL TOP LEFT")
                         return False
 
-        if self.diagonal_top_right:
+        if self.diagonal_positive:
             if index in [c.index for c in self.get_diagonal_top_right()]:
                 for cell in self.get_diagonal_top_right():
                     if cell.value == number:
@@ -661,16 +685,15 @@ class Sudoku:
             if not cage.valid(board_to_search, number, show_constraint=show_constraints):
                 return False
 
-        for thermo in self.thermometers:
-            if index not in thermo.indices: continue
-
-            if not thermo.valid(index, number):
-                return False
-
         for line in self.lines:
             if index not in line.indices: continue
 
             if not line.valid(index, number):
+                return False
+        for dot in self.border_constraints:
+            if index not in dot.indices: continue
+
+            if not dot.valid(index, number):
                 return False
 
         return True
@@ -684,23 +707,41 @@ class Sudoku:
         return sorted([(index, self.valid_numbers(index)) for index in range(81)],
                       key=lambda tpl: len(tpl[1]))
 
+    @classmethod
+    def blank(cls):
+        return Sudoku.from_string(
+            "0" * 81
+        )
 
-if __name__ == '__main__':
-    from components import Thermometer, Cage
+    def to_file(self):
+        import json
+        folder = QFileDialog.getExistingDirectory(dir=os.getcwd())
+        data = {
 
-    s = Sudoku.from_string(
-        "001900003"
-        "900700160"
-        "000005007"
-        "050000009"
-        "004302600"
-        "200000070"
-        "600000030"
-        "042007006"
-        "500006800"
-    )
-    print(s)
+            "digits": [''.join(str(cell.value) for cell in self.get_entire_row(i)) for i in
+                       range(0, 81, 9)],
+            "constraints": {
+                "diagonal_pos": self.diagonal_positive,
+                "diagonal_neg": self.diagonal_negative,
+                "antiknight": self.antiknight,
+                "antiking": self.antiking,
+                "disjoint_groups": self.disjoint_groups,
+                "nonconsecutive": self.nonconsecutive
+            },
+            "negative_constraints": {
+                "ratio": False,
+                "XV": False
+            },
+            "components": {
+                "lines": [line.to_json() for line in self.lines],
+                "dots": [dot.to_json() for dot in self.border_constraints],
+                "cages": [cage.to_json() for cage in self.cages],
+                "odds": self.forced_odds,
+                "evens": self.forced_evens
+            }
 
-    t = Thermometer(s, [73, 74, 75, 76, 77, 78])
-    s.thermometers.append(t)
-    print(s.valid(3, 74, True))
+        }
+
+        path = uniquify(folder + "/sudoku.json")
+        with open(path, "w") as file:
+            json.dump(data, file, indent=2)

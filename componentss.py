@@ -3,7 +3,7 @@ from abc import ABC
 from typing import List, Tuple, Set
 
 from PySide6.QtCore import Qt, QPoint, QRect
-from PySide6.QtGui import QPainter, QBrush, QColor, QPen, QPolygon
+from PySide6.QtGui import QPainter, QBrush, QColor, QPen, QPolygon, QFont
 
 from sudoku import tile_to_poly, Cell
 
@@ -31,6 +31,12 @@ class Cage:
 
         self.inner_offset = 5
         self.no_repeat = True
+
+    def to_json(self):
+        return {
+            "indices": self.cells,
+            "total": self.total
+        }
 
     def valid(self, board: List[Cell], number: int, show_constraint: bool = False) -> bool:
 
@@ -61,6 +67,7 @@ class Cage:
         return len([cell for cell in board if cell.index in self.cells and cell.value == 0])
 
     def draw(self, painter: QPainter, board: List[Cell], cell_size: int):
+
         pen = QPen(QColor("#000000"), 3.0, Qt.DotLine)
         pen.setCapStyle(Qt.RoundCap)
         painter.setPen(pen)
@@ -99,6 +106,8 @@ class Cage:
                     cell_size + edge.ex + self.inner_offset,
                     cell_size + edge.ey - self.inner_offset
                 )
+
+        painter.setFont(QFont("Verdana", 12))
 
         painter.drawText(QRect(8 + cell_size + edges[0].sx, 5 + cell_size + edges[0].sy, 20, 20),
                          str(self.total))

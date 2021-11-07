@@ -3,14 +3,16 @@ import itertools
 from datetime import date
 
 from PySide6.QtCore import Qt, QTimer, QEvent, QPoint
-from PySide6.QtGui import QCursor, QMouseEvent, QIcon, QResizeEvent, QEnterEvent, QPixmap
+from PySide6.QtGui import QCursor, QMouseEvent, QIcon, QResizeEvent, QEnterEvent, QPixmap, QAction
 from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QFrame, QLabel, QHBoxLayout, QPushButton, \
-    QWidget, QSizeGrip, QComboBox
+    QWidget, QSizeGrip, QComboBox, QGridLayout, QMenu, QSizePolicy
 
 from board import SudokuBoard
+from components.border_constraints import KropkiDot, XVSum, LessGreater, Quadruple
 from componentss import Cage
+from menus import ConstraintsMenu, ComponentsMenu
 from sudoku import Sudoku
-from components.lines import GermanWhispersLine, PalindromeLine, Thermometer
+from components.line_constraints import GermanWhispersLine, PalindromeLine, Thermometer, Arrow
 
 
 class SudokuWindow(QMainWindow):
@@ -22,7 +24,7 @@ class SudokuWindow(QMainWindow):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.statusBar().hide()
 
-        self.setFixedSize(770, 900)
+        self.setFixedSize(1280, 900)
 
         self.setStyleSheet(
             "QSizeGrip{border: none}"
@@ -32,21 +34,24 @@ class SudokuWindow(QMainWindow):
             "QFrame#title_bar QPushButton:hover{background: #DDDDDD}"
             "QFrame#title_bar QPushButton:hover#exit_btn{background: #DC143C}"
             "QFrame#title_bar QLabel{font-weight: bold}"
-            "QPushButton{background: transparent; border: none}"
+            "QPushButton{background: transparent; border: 1px solid rgb(120, 120, 120)}"
+            "QPushButton:hover{background: white}"
+            "QMenu{background: white}"
+            "QMenu:separator{background: #6A6A6A; height: 2px; margin: 4px}"
+            "QMenu:item{padding-right: 10px; padding-left: 10px; height: 30px; width: 250px; border: none}"
+            "QMenu:item:selected{background: #6495ED; color: white}"
+            "QMenu:indicator:checked{image: url(icons/check.svg)}"
+            "QMenu:indicator:!checked{image: url(icons/x_red.svg)}"
+            "QMenu:icon{padding-left: 10px}"
+
         )
 
-        self.central_frame = QFrame(self)
-        self.central_frame.setObjectName("central")
-        self.setCentralWidget(self.central_frame)
+        ############################################################################################
+        ############################################################################################
 
-        self.title_bar = SudokuTitleBar(self)
-        self.mode_switch = QComboBox(self)
-        self.mode_switch.addItems(["Normal", "Center", "Corner", "Color"])
+        self.adding_component = False
 
-        self.solve_btn = QPushButton("Solve")
-        self.next_step_btn = QPushButton("Next Step")
-
-        s = Sudoku.from_string(
+        self.sudoku = Sudoku.from_string(
             "000000000"
             "500000000"
             "000000000"
@@ -58,85 +63,67 @@ class SudokuWindow(QMainWindow):
             "300000000"
         )
 
-        """s = Sudoku.from_string(
-            "000000000"
-            "400000038"
-            "000000000"
-            "380000000"
-            "000000000"
-            "000000000"
-            "000000000"
-            "000000000"
-            "000000000"
-        )"""
+        ############################################################################################
+        ############################################################################################
 
-        """s = Sudoku.from_string(
-            "006300000"
-            "700000008"
-            "000000090"
-            "002000040"
-            "000000000"
-            "000000050"
-            "000050000"
-            "009001005"
-            "000000600"
-        )"""
+        self.central_frame = QFrame(self)
+        self.central_frame.setObjectName("central")
+        self.setCentralWidget(self.central_frame)
 
-        s.lines.append(PalindromeLine(s, [40, 41, 51]))
-        # s.lines.append(PalindromeLine(s, [31, 32, 33, 43, 44]))
+        self.title_bar = SudokuTitleBar(self)
 
-        """
-        
-        s.lines.append(("RENBAN", [31, 40, 49]))
-        s.lines.append(("ANYTHING", [72, 64, 56, 47]))
+        self.mode_switch = QComboBox(self)
+        self.mode_switch.setFixedHeight(40)
+        self.mode_switch.addItems(["Normal", "Center", "Corner", "Color"])
 
-        s.forced_evens.append(3)
-        s.forced_evens.append(5)
-        s.forced_evens.append(8)
-        s.forced_evens.append(1)
-        s.forced_evens.append(9)
+        self.solve_btn = QPushButton("Solve")
+        self.solve_btn.setFixedHeight(40)
+        self.solve_btn.setCursor(QCursor(Qt.PointingHandCursor))
 
-        s.forced_odds.append(10)
-        s.forced_odds.append(78)
-        s.forced_odds.append(60)
-        s.forced_odds.append(61)
-        s.forced_odds.append(24)
+        ############################################################################################
 
-        s.diagonal_top_right = True
-        
-        """
+        self.component_menu = ComponentsMenu(self)
 
-        s.thermometers.append(Thermometer(s, [18, 9, 0, 1, 11, 19]))
-        s.thermometers.append(Thermometer(s, [78, 69, 60, 61, 62, 71, 80, 79, 70]))
-        s.calculate_valid_numbers()
+        self.component_btn = QPushButton("Components")
+        self.component_btn.setMenu(self.component_menu)
+        self.component_btn.setFixedHeight(40)
+        self.component_btn.setMinimumWidth(200)
 
-        """
-        s.cages.append(Cage([9, 18], 3))
-        s.cages.append(Cage([31, 40, 49], 12))
-        s.cages.append(Cage([33, 42, 51], 24))
-        s.cages.append(Cage([35, 44, 53], 15))
-        s.cages.append(Cage([58, 67, 76], 24))
-        s.cages.append(Cage([60, 69, 78], 15))
-        s.cages.append(Cage([62, 71, 80], 6))"""
+        self.constraints_menu = ConstraintsMenu(self)
 
-        self.board = SudokuBoard(self, s)
+        self.constraints_btn = QPushButton("Constraints")
+        self.constraints_btn.setMenu(self.constraints_menu)
+        self.constraints_btn.setFixedHeight(40)
+        self.constraints_btn.setMinimumWidth(200)
 
+        ############################################################################################
+
+        self.board = SudokuBoard(self, self.sudoku)
         self.solve_btn.clicked.connect(self.board.solve_board)
-        self.next_step_btn.clicked.connect(self.board.next_step)
 
-        self.central_layout = QVBoxLayout(self.central_frame)
+        self.central_layout = QGridLayout(self.central_frame)
         self.central_layout.setContentsMargins(0, 0, 0, 0)
-        self.central_layout.setSpacing(0)
-        self.central_layout.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
+        self.central_layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
 
-        self.central_layout.addWidget(self.title_bar)
-        self.central_layout.addWidget(self.board)
-        self.central_layout.addWidget(self.mode_switch)
-        self.central_layout.addSpacing(10)
+        self.settings_layout = QGridLayout()
+        self.settings_layout.setContentsMargins(20, 20, 20, 20)
+        self.settings_layout.setSpacing(10)
 
-        self.central_layout.addWidget(self.solve_btn)
-        self.central_layout.addSpacing(10)
-        self.central_layout.addWidget(self.next_step_btn)
+        self.central_layout.addWidget(self.title_bar, 0, 0, 1, 1)
+
+        self.content_layout = QGridLayout()
+        self.content_layout.setContentsMargins(20, 20, 20, 20)
+        self.content_layout.setSpacing(10)
+
+        self.content_layout.addWidget(self.board, 0, 0, 2, 1)
+        self.content_layout.addWidget(self.constraints_btn, 0, 1, 1, 1)
+        self.content_layout.addWidget(self.component_btn, 1, 1, 1, 1)
+
+        self.central_layout.addLayout(self.content_layout, 1, 0, 1, 1)
+        self.central_layout.addLayout(self.settings_layout, 2, 0, 1, 1)
+
+        self.settings_layout.addWidget(self.mode_switch, 0, 0, 1, 1)
+        self.settings_layout.addWidget(self.solve_btn, 0, 1, 1, 1)
 
         # Resizing
 
@@ -156,6 +143,30 @@ class SudokuWindow(QMainWindow):
         self.size_grip_top = SizeGrip(self, Qt.TopEdge)
         self.size_grip_right = SizeGrip(self, Qt.RightEdge)
         self.size_grip_bottom = SizeGrip(self, Qt.BottomEdge)
+
+    def toggle_diagonal_pos(self):
+        self.sudoku.diagonal_positive = self.diagonal_pos.isChecked()
+        self.update()
+
+    def toggle_diagonal_neg(self):
+        self.sudoku.diagonal_negative = self.diagonal_neg.isChecked()
+        self.update()
+
+    def toggle_antiking(self):
+        self.sudoku.antiking = self.antiking.isChecked()
+        self.update()
+
+    def toggle_antiknight(self):
+        self.sudoku.antiknight = self.antiknight.isChecked()
+        self.update()
+
+    def toggle_disjoint(self):
+        self.sudoku.disjoint_groups = self.disjoint_groups.isChecked()
+        self.update()
+
+    def toggle_nonconsecutive(self):
+        self.sudoku.nonconsecutive = self.nonconsecutive.isChecked()
+        self.update()
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         self.board.resizeEvent(event)
@@ -266,6 +277,8 @@ class SudokuTitleBar(QFrame):
         self.setMouseTracking(True)
         self.setObjectName("title_bar")
         window.statusBar().setSizeGripEnabled(True)
+
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         self.start_time = datetime.datetime.now()
 

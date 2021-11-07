@@ -1,11 +1,12 @@
 import math
 from typing import List, Tuple
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush
 
-from components.base_constraint import Constraint
+from components.border_constraints import Constraint
 from sudoku import Sudoku, Cell
+from utils import smallest_sum_including_x
 
 
 class LineConstraint(Constraint):
@@ -44,13 +45,10 @@ class LineConstraint(Constraint):
 
     def draw(self, painter: QPainter, cell_size: int):
 
-        pen = QPen(self.color, 14.0)
+        pen = QPen(self.color, 10.0)
         pen.setCapStyle(Qt.RoundCap)
 
         painter.setPen(pen)
-
-        """for cell in self.center():
-            painter.fillRect(cell.rect(cell_size), QColor(30, 30, 30, 130))"""
 
         for cell in self.cells:
             if cell == self.cells[-1]:
@@ -65,6 +63,12 @@ class LineConstraint(Constraint):
             y2 = nxt_cell.row * cell_size + cell_size + cell_size // 2
 
             painter.drawLine(x1, y1, x2, y2)
+
+    def to_json(self):
+        return {
+            "type": self.__class__.__name__,
+            "indices": self.indices
+        }
 
 
 class GermanWhispersLine(LineConstraint):
@@ -85,8 +89,6 @@ class GermanWhispersLine(LineConstraint):
         if number == 5:
             return False
 
-        # if not self.on_end(index) and number in (4, 6):
-
         prev = self.previous_cell(index)
         nxt = self.next_cell(index)
 
@@ -94,15 +96,21 @@ class GermanWhispersLine(LineConstraint):
         for cell in self.cells:
             if cell.value != 0:
                 hit = cell
+
         if hit:
-            if hit.value in self.LOWS:
+            if hit.value in self.LOWS and hit.index != index:
                 if int(self.distance(hit.index, index)) % 2 == 0 and number not in self.LOWS:
                     return False
 
-            if hit.value in self.HIGHS:
+                if int(self.distance(hit.index, index)) % 2 != 0 and number not in self.HIGHS:
+                    return False
+
+            if hit.value in self.HIGHS and hit.index != index:
                 if int(self.distance(hit.index, index)) % 2 == 0 and number not in self.HIGHS:
                     return False
 
+                if int(self.distance(hit.index, index)) % 2 != 0 and number not in self.LOWS:
+                    return False
 
         if prev and prev.value != 0 and math.fabs(prev.value - number) < 5:
             return False
@@ -161,8 +169,6 @@ class Thermometer(LineConstraint):
 
         return cells
 
-
-
     def enough_space(self, index: int, number: int):
 
         seq = self.empties(index)
@@ -203,7 +209,6 @@ class Thermometer(LineConstraint):
 
     def valid(self, index: int, number: int) -> bool:
 
-
         line_pos = self.position_on_line(index)
 
         for i in self.indices[line_pos + 1:]:
@@ -222,6 +227,11 @@ class Thermometer(LineConstraint):
         if len(self.indices) - line_pos > 10 - number:
             return False
 
+        nxt = self.next_cell(index)
+        if nxt and nxt.valid_numbers:
+            if all(number >= vn for vn in nxt.valid_numbers):
+                return False
+
         prev = None
         for i in range(line_pos):
             if self.cells[i].value != 0:
@@ -232,7 +242,6 @@ class Thermometer(LineConstraint):
             if dst > 1:
                 if number - prev.value < dst:
                     return False
-
 
         return True
 
@@ -266,4 +275,144 @@ class Thermometer(LineConstraint):
                 cell_size // 2 + cell_size + c1.row * cell_size,
                 cell_size // 2 + cell_size + c2.column * cell_size,
                 cell_size // 2 + cell_size + c2.row * cell_size,
+            )
+
+
+class Arrow(LineConstraint):
+    def __init__(self, sudoku: "Sudoku", indices: List[int], one_cell_sum: bool = True):
+        super().__init__(sudoku, indices)
+
+        if one_cell_sum:
+            self.start = self.indices[0]
+            self.start_size = 1
+        else:
+            self.start = self.indices[0:2]
+            self.start_size = 2
+
+        self.arrow = self.indices[self.start_size:]
+
+    def sum_so_far(self):
+        return sum([c.value for c in self.cells[self.start_size:] if c.value != 0])
+
+    def arrow_cells(self):
+        return self.cells[self.start_size:]
+
+    def sum_cells(self):
+        return self.cells[0:self.start_size + 1]
+
+    def valid(self, index: int, number: int):
+
+        if len(self.arrow_cells()) > 1 and number == 1:
+            return False
+
+        if self.start_size == 1:
+
+            if index == self.start:
+
+                if all([c.value != 0 for c in self.arrow_cells()]):
+                    if number != self.sum_so_far():
+                        return False
+
+            if index in self.arrow:
+
+                total = self.sudoku.board[self.start].value
+                maximum_sum = 9
+
+                if total != 0:
+                    if self.sum_so_far() + number > total:
+                        return False
+
+                    space_left = len([c for c in self.arrow_cells() if c.value == 0])
+                    if space_left == 1 and number + self.sum_so_far() != total:
+                        return False
+
+                if smallest_sum_including_x(number, len(self.cells) - 2) > maximum_sum:
+                    return False
+
+        return True
+
+    @staticmethod
+    def dot_product(v1: QPoint, v2: QPoint = QPoint(0, 1)):
+        return v1.x() * v2.x() + v1.y() * v2.y()
+
+    def length(self, vec: QPoint):
+        return math.sqrt(self.dot_product(vec, vec))
+
+    def angle(self, vec1: Tuple[int, int], vec2: Tuple[int, int] = (0, 1)):
+        return math.acos(self.dot_product(vec1, vec2) / (self.length(vec1) * self.length(vec2)))
+
+    def draw(self, painter: QPainter, cell_size: int):
+
+        pen = QPen(QColor("#BBBBBB"), 5.0)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+
+        if self.arrow_cells():
+            for i in range(len(self.cells) - 1):
+                c1 = self.cells[i]
+                c2 = self.cells[i + 1]
+
+                painter.drawLine(
+                    cell_size // 2 + cell_size + c1.column * cell_size,
+                    cell_size // 2 + cell_size + c1.row * cell_size,
+                    cell_size // 2 + cell_size + c2.column * cell_size,
+                    cell_size // 2 + cell_size + c2.row * cell_size
+                )
+
+            # Arrow tips
+
+            center = QPoint(cell_size // 2 + cell_size + c2.column * cell_size,
+                            cell_size // 2 + cell_size + c2.row * cell_size)
+
+            p1 = QPoint(
+                cell_size // 2 + cell_size + self.cells[-2].column * cell_size,
+                cell_size // 2 + cell_size + self.cells[-2].row * cell_size,
+            )
+
+            p2 = QPoint(
+                cell_size // 2 + cell_size + self.cells[-1].column * cell_size,
+                cell_size // 2 + cell_size + self.cells[-1].row * cell_size,
+            )
+
+            vector = p2 - p1
+
+            length = self.length(vector)
+            width = cell_size // 2
+
+            arrow_head = width / (2 * (math.tan(45) / 2) * length)
+            arrow_head_start = p2 + (-arrow_head * vector)
+
+            normal = QPoint(-vector.y(), vector.x())
+            t_normal = width / (2 * length)
+            left = arrow_head_start + t_normal * normal
+            right = arrow_head_start - t_normal * normal
+
+            painter.drawLine(center, left)
+            painter.drawLine(center, right)
+
+        painter.setBrush(QBrush(QColor(255, 255, 255)))
+
+        pen = QPen(QColor("#BBBBBB"), 6.0)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+
+        if self.start_size == 1:
+
+            painter.drawEllipse(
+                self.sudoku.board[self.start].scaled_rect(cell_size, 0.8)
+            )
+        else:
+
+            if self.start[0] % 9 == self.start[1] % 9:
+
+                rect = self.sudoku.board[self.start[0]].scaled_rect(cell_size, 0.8)
+                rect.setHeight(cell_size * 2 * 0.9)
+
+            else:
+
+                rect = self.sudoku.board[self.start[0]].scaled_rect(cell_size, 0.8)
+                rect.setWidth(cell_size * 2 * 0.9)
+
+            painter.drawRoundedRect(
+                rect, 10, 10
             )
