@@ -43,6 +43,7 @@ class SudokuBoard(QWidget):
     def __init__(self, parent: QWidget, sudoku: Sudoku):
         super().__init__(parent)
 
+        self.window_ = parent
         self.sudoku = sudoku
         self.mode_switch = parent.mode_switch
 
@@ -111,7 +112,7 @@ class SudokuBoard(QWidget):
             if self.cell_component is None:
                 edge.draw(painter, self.cell_size, offset)
 
-        if len(self.selected) == 1:
+        if len(self.selected) == 1 and self.window_.highlight_cells_box.isChecked():
 
             c = self.sudoku.board[next(iter(self.selected))]
 
@@ -503,7 +504,7 @@ class SudokuBoard(QWidget):
                     if mode == NORMAL:
                         self.steps_done.append((cell.index, cell.value))
                         cell.value = event.key() - 48
-                        # self.sudoku.calculate_valid_numbers()
+                        self.sudoku.calculate_valid_numbers()
 
                     elif mode == CENTER:
 

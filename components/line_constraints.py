@@ -4,12 +4,12 @@ from typing import List, Tuple
 from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush
 
-from components.border_constraints import Constraint
+from components.border_constraints import Component
 from sudoku import Sudoku, Cell
 from utils import smallest_sum_including_x
 
 
-class LineConstraint(Constraint):
+class LineComponent(Component):
     def __init__(self, sudoku: "Sudoku", indices: List[int]):
         super().__init__(sudoku, indices)
 
@@ -80,7 +80,7 @@ class LineConstraint(Constraint):
         }
 
 
-class GermanWhispersLine(LineConstraint):
+class GermanWhispersLine(LineComponent):
     """
     A constraint that forces digits on the line to have a difference of at least 5
     to the cell before and after
@@ -136,7 +136,7 @@ class GermanWhispersLine(LineConstraint):
         return True
 
 
-class PalindromeLine(LineConstraint):
+class PalindromeLine(LineComponent):
     NAME = "Palindrome Line"
 
     def __init__(self, sudoku: "Sudoku", indices: List[int]):
@@ -160,7 +160,7 @@ class PalindromeLine(LineConstraint):
         return True
 
 
-class Thermometer(LineConstraint):
+class Thermometer(LineComponent):
     NAME = "Thermometer"
 
     def __init__(self, sudoku: "Sudoku", indices: List[int]):
@@ -308,7 +308,7 @@ class Thermometer(LineConstraint):
             )
 
 
-class Arrow(LineConstraint):
+class Arrow(LineComponent):
     NAME = "Arrow"
 
     def __init__(self, sudoku: "Sudoku", indices: List[int], one_cell_sum: bool = True):

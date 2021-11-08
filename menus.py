@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QMenu
+from typing import Type
 
-from components.border_constraints import XVSum, KropkiDot, LessGreater, Quadruple, Constraint
-from components.line_constraints import Arrow, Thermometer, GermanWhispersLine, PalindromeLine
+from PySide6.QtGui import QAction
+from PySide6.QtWidgets import QMenu, QCheckBox, QWidget, QFrame, QVBoxLayout, QLabel, QPushButton, QButtonGroup
+
+from components.border_constraints import XVSum, KropkiDot, LessGreater, Quadruple, Component, BorderComponent
+from components.line_constraints import Arrow, Thermometer, GermanWhispersLine, PalindromeLine, LineComponent
+from components.region_constraints import RegionComponent
 
 
 class ComponentsMenu(QMenu):
@@ -48,23 +51,20 @@ class ComponentsMenu(QMenu):
         self.addAction(self.german_whispers_action)
         self.addAction(self.palindrome_action)
 
-
-
     def update(self) -> None:
         self.window_.update()
 
-    def set_border_component(self, component: Constraint):
+    def set_border_component(self, component: Component):
         self.window_.board.making_quadruple = isinstance(component, Quadruple)
         self.window_.board.border_component = component
         self.window_.board.cell_component = None
 
         self.window_.current_component_label.setText(f"Creating {component.NAME}")
 
-    def set_cell_component(self, component: Constraint):
+    def set_cell_component(self, component: Component):
         self.window_.board.border_component = None
         self.window_.board.cell_component = component
         self.window_.current_component_label.setText(f"Creating {component.NAME}")
-
 
 
 class KropkiSubMenu(QMenu):
@@ -162,62 +162,111 @@ class ComponentAction(QAction):
                     pass
 
 
-class ConstraintsMenu(QMenu):
+class ComponentMenu(QFrame):
     def __init__(self, parent: "SudokuWindow"):
         super().__init__(parent)
-
-        self.setTitle("Constraints")
 
         self.window_ = parent
         self.sudoku = parent.sudoku
 
-        self.diagonal_pos = ConstraintAction(self, "Diagonal +")
-        self.diagonal_neg = ConstraintAction(self, "Diagonal -")
+        self.component_group = QButtonGroup()
 
-        self.antiknight = ConstraintAction(self, "Antiknight")
-        self.antiking = ConstraintAction(self, "Antiking")
+        self.layout_ = QVBoxLayout(self)
+        self.layout_.setContentsMargins(0, 0, 0, 0)
+        self.layout_.setSpacing(5)
 
-        self.disjoint_groups = ConstraintAction(self, "Disjoint Groups")
-        self.nonconsecutive = ConstraintAction(self, "Nonconsecutive")
+        self.add_button(ComponentButton(self, KropkiDot))
 
-        self.addAction(self.diagonal_pos)
-        self.addAction(self.diagonal_neg)
-        self.addAction(self.antiknight)
-        self.addAction(self.antiking)
-        self.addAction(self.disjoint_groups)
-        self.addAction(self.nonconsecutive)
+    def add_button(self, button: ComponentButton):
+        self.component_group.addButton(button)
+        self.layout_.addWidget(button)
+
+    def set_component(self, component: BorderComponent | LineComponent | RegionComponent):
+        print(component)
+
+
+class ComponentButton(QPushButton):
+    def __init__(
+            self,
+            parent: ComponentMenu,
+            component: Type[BorderComponent] | Type[LineComponent] | Type[RegionComponent]
+    ):
+        super().__init__(parent)
+
+        self.menu = parent
+        self.sudoku = parent.sudoku
+
+        self.component = component
+
+        self.setCheckable(True)
+        self.setChecked(False)
+
+        self.setText(component.NAME)
+
+        self.clicked.connect(lambda: self.menu.set_component(self.component))
+
+
+
+
+class ConstraintsMenu(QFrame):
+    def __init__(self, parent: "SudokuWindow"):
+        super().__init__(parent)
+
+        self.window_ = parent
+        self.sudoku = parent.sudoku
+
+        self.diagonal_pos = ConstraintCheckBox(self, "Diagonal +")
+        self.diagonal_neg = ConstraintCheckBox(self, "Diagonal -")
+
+        self.antiknight = ConstraintCheckBox(self, "Antiknight")
+        self.antiking = ConstraintCheckBox(self, "Antiking")
+
+        self.disjoint_groups = ConstraintCheckBox(self, "Disjoint Groups")
+        self.nonconsecutive = ConstraintCheckBox(self, "Nonconsecutive")
+
+        self.layout_ = QVBoxLayout(self)
+        self.layout_.setContentsMargins(0, 0, 0, 0)
+        self.layout_.setSpacing(5)
+
+        self.layout_.addWidget(QLabel("Constraints", self))
+        self.layout_.addWidget(self.diagonal_pos)
+        self.layout_.addWidget(self.diagonal_neg)
+        self.layout_.addWidget(self.antiknight)
+        self.layout_.addWidget(self.antiking)
+        self.layout_.addWidget(self.disjoint_groups)
+        self.layout_.addWidget(self.nonconsecutive)
 
     def update(self) -> None:
         self.window_.update()
 
 
-class ConstraintAction(QAction):
-    def __init__(self, parent: ConstraintsMenu, name: str):
-        super().__init__(parent)
+class ConstraintCheckBox(QCheckBox):
+    def __init__(self, frame: QFrame, name: str):
+        super().__init__(frame)
 
         self.setText(name)
         self.setCheckable(True)
 
-        self.menu = parent
+        self.frame = frame
         self.name = name
 
-        self.triggered.connect(
+        self.clicked.connect(
             self.toggle_constraint
         )
 
     def toggle_constraint(self):
         match self.name:
             case "Diagonal +":
-                self.menu.sudoku.diagonal_positive = not self.menu.sudoku.diagonal_positive
+                self.frame.sudoku.diagonal_positive = not self.frame.sudoku.diagonal_positive
             case "Diagonal -":
-                self.menu.sudoku.diagonal_negative = not self.menu.sudoku.diagonal_negative
+                self.frame.sudoku.diagonal_negative = not self.frame.sudoku.diagonal_negative
             case "Antiknight":
-                self.menu.sudoku.antiknight = not self.menu.sudoku.antiknight
+                self.frame.sudoku.antiknight = not self.frame.sudoku.antiknight
             case "Antiking":
-                self.menu.sudoku.antiking = not self.menu.sudoku.antiking
+                self.frame.sudoku.antiking = not self.frame.sudoku.antiking
             case "Disjoint Groups":
-                self.menu.sudoku.disjoint_groups = not self.menu.sudoku.disjoint_groups
+                self.frame.sudoku.disjoint_groups = not self.frame.sudoku.disjoint_groups
             case "Nonconsecutive":
-                self.menu.sudoku.nonconsecutive = not self.menu.sudoku.nonconsecutive
+                self.frame.sudoku.nonconsecutive = not self.frame.sudoku.nonconsecutive
 
-        self.menu.parent().update()
+        self.frame.update()

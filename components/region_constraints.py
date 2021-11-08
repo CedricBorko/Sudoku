@@ -3,11 +3,11 @@ from typing import List
 from PySide6.QtCore import Qt, QRect
 from PySide6.QtGui import QPainter, QPen, QColor, QFont
 
-from components.border_constraints import Constraint
+from components.border_constraints import Component
 from sudoku import Cell, tile_to_poly
 
 
-class RegionConstraint(Constraint):
+class RegionComponent(Component):
     pass
 
 

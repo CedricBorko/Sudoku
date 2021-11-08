@@ -1,7 +1,7 @@
 import itertools
 import os
 import threading
-from typing import List, Tuple
+from typing import List, Tuple, T
 
 
 def n_digit_sums(amount: int, target: int,
@@ -50,3 +50,17 @@ def uniquify(path):
         counter += 1
 
     return path
+
+
+class SmartList(list):
+    def __init__(self):
+        super().__init__()
+
+    def append(self, __object: T) -> None:
+        if __object in self:
+            self.remove(__object)
+        else:
+            super(SmartList, self).append(__object)
+
+
+s = SmartList()

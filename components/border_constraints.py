@@ -10,7 +10,7 @@ from PySide6.QtGui import QPainter, QBrush, QColor, QPen, QFont, Qt
 from sudoku import Sudoku, Cell
 
 
-class Constraint(ABC):
+class Component(ABC):
     def __init__(self, sudoku: "Sudoku", indices: List[int]):
         self.sudoku = sudoku
         self.indices = indices
@@ -26,12 +26,12 @@ class Constraint(ABC):
         pass
 
 
-class BorderConstraint(Constraint):
+class BorderComponent(Component):
     def __init__(self, sudoku: "Sudoku", indices: List[int]):
         super().__init__(sudoku, indices)
 
     def __eq__(self, other):
-        if isinstance(other, BorderConstraint):
+        if isinstance(other, BorderComponent):
             return sorted(self.indices) == sorted(other.indices)
         return NotImplemented
 
@@ -62,8 +62,135 @@ class BorderConstraint(Constraint):
         if not replace:
             self.sudoku.border_constraints.append(self)
 
+    @property
+    def first(self):
+        return self.cells[0]
 
-class KropkiDot(BorderConstraint):
+    @property
+    def second(self):
+        return self.cells[1]
+
+
+class Difference(BorderComponent):
+    def __init__(self, sudoku: "Sudoku", indices: List[int], difference: int = 1):
+        super().__init__(sudoku, indices)
+
+        self.difference = difference
+
+        if difference not in range(1, 9):
+            raise ValueError("Ratio must be between 2 and 9")
+
+    def __repr__(self):
+        return f"Difference of {self.difference} between {self.first} and {self.second}"
+
+    def valid(self, index: int, number: int):
+        if self.first.value != 0:
+            return self.first.value - self.difference == number or self.first.value + self.difference == number
+
+        if self.second.value != 0:
+            return self.second.value - self.difference == number or self.second.value + self.difference == number
+
+        return True
+
+    def draw(self, painter: QPainter, cell_size: int):
+        painter.setBrush(QBrush(QColor(255, 255, 255)))
+        painter.setPen(QPen(QColor(0, 0, 0), 1.0))
+
+        c1 = self.first
+        c2 = self.second
+
+        if c1.column == c2.column:  # Vertical
+            center = QPoint(
+                cell_size + c1.column * cell_size,
+                cell_size + max(c1.row, c2.row) * cell_size + cell_size // 2
+            )
+
+        else:  # Horizontal
+            center = QPoint(
+                cell_size + max(c1.column, c2.column) * cell_size,
+                cell_size + c1.row * cell_size + cell_size // 2
+            )
+
+        size = cell_size // 8
+        painter.drawEllipse(center, size, size)
+
+        if self.difference != 1:
+            painter.setFont(QFont("Verdana", 8, QFont.Bold))
+            painter.drawText(
+                QRect(center.x() - size // 2, center.y() - size // 2, size, size),
+                Qt.AlignHCenter | Qt.AlignVCenter,
+                str(self.difference)
+            )
+
+
+class Ratio(BorderComponent):
+    # Valid numbers for all ratios
+    VALID = {
+        2: (1, 2, 3, 4, 6, 8),
+        3: (1, 2, 3, 6, 9),
+        4: (1, 2, 4, 8),
+        5: (1, 5),
+        6: (1, 6),
+        7: (1, 7),
+        8: (1, 8),
+        9: (1, 9)
+    }
+
+    def __init__(self, sudoku: "Sudoku", indices: List[int], ratio: int = 2):
+        super().__init__(sudoku, indices)
+
+        self.ratio = ratio
+        if ratio not in range(2, 10):
+            raise ValueError("Ratio must be between 2 and 9")
+
+    def __repr__(self):
+        return f"Ratio of {self.ratio} : {1} between {self.first} and {self.second}"
+
+    def valid(self, index: int, number: int):
+        if self.first.value != 0:
+            return self.first.value / self.ratio == number or self.first.value * self.ratio == number
+
+        if self.second.value != 0:
+            return self.second.value / self.ratio == number or self.second.value * self.ratio == number
+
+        if number not in self.VALID[self.ratio]:
+            return False
+
+        return True
+
+    def draw(self, painter: QPainter, cell_size: int):
+        painter.setBrush(QBrush(QColor(0, 0, 0)))
+        painter.setPen(QPen(QColor(0, 0, 0), 2.0))
+
+        c1 = self.first
+        c2 = self.second
+
+        if c1.column == c2.column:  # Vertical
+            center = QPoint(
+                cell_size + c1.column * cell_size,
+                cell_size + max(c1.row, c2.row) * cell_size + cell_size // 2
+            )
+
+        else:  # Horizontal
+            center = QPoint(
+                cell_size + max(c1.column, c2.column) * cell_size,
+                cell_size + c1.row * cell_size + cell_size // 2
+            )
+
+        size = cell_size // 8
+        painter.drawEllipse(center, size, size)
+
+        painter.setPen(QPen(QColor(255, 255, 255)))
+        if self.ratio != 2:
+            painter.setFont(QFont("Verdana", 8, QFont.Bold))
+            painter.drawText(
+                QRect(center.x() - size // 2, center.y() - size // 2, size, size),
+                Qt.AlignHCenter | Qt.AlignVCenter,
+                str(self.ratio)
+            )
+
+
+class KropkiDot(BorderComponent):
     NAME = "Kropki Dot"
 
     def __init__(self, sudoku: "Sudoku", indices: List[int], consecutive: bool = True):
@@ -140,7 +267,7 @@ class KropkiDot(BorderConstraint):
         painter.drawEllipse(rect)
 
 
-class XVSum(BorderConstraint):
+class XVSum(BorderComponent):
     NAME = "XV Sum"
 
     def __init__(self, sudoku: "Sudoku", indices: List[int], total: int = 5):
@@ -166,7 +293,7 @@ class XVSum(BorderConstraint):
             return False
 
         if self.other_cell(index).value != 0 and self.other_cell(
-            index).value + number != self.total:
+                index).value + number != self.total:
             return False
 
         if self.other_cell(index).value == 0 and self.other_cell(index).valid_numbers:
@@ -225,8 +352,9 @@ class XVSum(BorderConstraint):
         painter.drawText(rect, Qt.AlignVCenter | Qt.AlignHCenter, text)
 
 
-class LessGreater(BorderConstraint):
+class LessGreater(BorderComponent):
     NAME = "Less or Greater"
+
     def __init__(self, sudoku: "Sudoku", indices: List[int], less: bool):
         super().__init__(sudoku, indices)
 
@@ -340,7 +468,7 @@ class LessGreater(BorderConstraint):
             )
 
 
-class Quadruple(BorderConstraint):
+class Quadruple(BorderComponent):
     NAME = "Quadruple"
 
     def __init__(self, sudoku: "Sudoku", indices: List[int], numbers: List[int]):

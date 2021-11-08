@@ -5,12 +5,12 @@ from datetime import date
 from PySide6.QtCore import Qt, QTimer, QEvent, QPoint
 from PySide6.QtGui import QCursor, QMouseEvent, QIcon, QResizeEvent, QEnterEvent, QPixmap, QAction
 from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QFrame, QLabel, QHBoxLayout, QPushButton, \
-    QWidget, QSizeGrip, QComboBox, QGridLayout, QMenu, QSizePolicy
+    QWidget, QSizeGrip, QComboBox, QGridLayout, QMenu, QSizePolicy, QCheckBox
 
 from board import SudokuBoard
-from components.border_constraints import KropkiDot, XVSum, LessGreater, Quadruple
+from components.border_constraints import KropkiDot, XVSum, LessGreater, Quadruple, Ratio, Difference
 
-from menus import ConstraintsMenu, ComponentsMenu
+from menus import ConstraintsMenu, ComponentsMenu, ComponentMenu
 from sudoku import Sudoku
 from components.line_constraints import GermanWhispersLine, PalindromeLine, Thermometer, Arrow
 
@@ -43,6 +43,12 @@ class SudokuWindow(QMainWindow):
             "QMenu:indicator:checked{image: url(icons/check.svg)}"
             "QMenu:indicator:!checked{image: url(icons/x_red.svg)}"
             "QMenu:icon{padding-left: 10px}"
+            "QCheckBox:!checked{color: rgb(120, 120, 120)}"
+            "QCheckBox:checked{color: rgb(0, 0, 0)}"
+
+
+            "QCheckBox:indicator:checked{image: url(icons/check.svg)}"
+            "QCheckBox:indicator:!checked{image: url(icons/x_red.svg)}"
 
         )
 
@@ -63,6 +69,14 @@ class SudokuWindow(QMainWindow):
             "300000000"
         )
 
+        self.sudoku.border_constraints.append(Difference(self.sudoku, [4, 5], 5))
+        self.sudoku.border_constraints.append(Difference(self.sudoku, [5, 6], 3))
+
+        self.sudoku.border_constraints.append(Difference(self.sudoku, [13, 14], 2))
+        self.sudoku.border_constraints.append(Difference(self.sudoku, [14, 15], 4))
+
+        self.sudoku.calculate_valid_numbers()
+
         ############################################################################################
         ############################################################################################
 
@@ -80,6 +94,10 @@ class SudokuWindow(QMainWindow):
         self.solve_btn.setFixedHeight(40)
         self.solve_btn.setCursor(QCursor(Qt.PointingHandCursor))
 
+        self.highlight_cells_box = QCheckBox("Highlight Cells seen from selection", self)
+        self.highlight_cells_box.setChecked(True)
+        self.highlight_cells_box.clicked.connect(self.update)
+
         ############################################################################################
 
         self.component_menu = ComponentsMenu(self)
@@ -90,11 +108,7 @@ class SudokuWindow(QMainWindow):
         self.component_btn.setMinimumWidth(200)
 
         self.constraints_menu = ConstraintsMenu(self)
-
-        self.constraints_btn = QPushButton("Constraints")
-        self.constraints_btn.setMenu(self.constraints_menu)
-        self.constraints_btn.setFixedHeight(40)
-        self.constraints_btn.setMinimumWidth(200)
+        self.components_menu = ComponentMenu(self)
 
         self.current_component_label = QLabel(self)
 
@@ -124,12 +138,13 @@ class SudokuWindow(QMainWindow):
         self.content_layout.addWidget(self.board, 0, 0, 2, 1)
         self.content_layout.addLayout(self.components_layout, 1, 1, 1, 1)
 
-        self.components_layout.addWidget(self.constraints_btn, 0, 0, 1, 1)
-        self.components_layout.addWidget(self.component_btn, 0, 1, 1, 1)
+        self.components_layout.addWidget(self.constraints_menu, 0, 0, 1, 1)
+        self.components_layout.addWidget(self.components_menu, 0, 1, 1, 1)
         self.components_layout.addWidget(self.current_component_label, 1, 0, 1, 1)
 
         self.settings_layout.addWidget(self.mode_switch, 0, 0, 1, 1)
         self.settings_layout.addWidget(self.solve_btn, 0, 1, 1, 1)
+        self.settings_layout.addWidget(self.highlight_cells_box, 1, 0, 1, 1)
 
         self.central_layout.addLayout(self.content_layout, 1, 0, 1, 1)
         self.central_layout.addLayout(self.settings_layout, 2, 0, 1, 1)
@@ -152,30 +167,6 @@ class SudokuWindow(QMainWindow):
         self.size_grip_top = SizeGrip(self, Qt.TopEdge)
         self.size_grip_right = SizeGrip(self, Qt.RightEdge)
         self.size_grip_bottom = SizeGrip(self, Qt.BottomEdge)
-
-    def toggle_diagonal_pos(self):
-        self.sudoku.diagonal_positive = self.diagonal_pos.isChecked()
-        self.update()
-
-    def toggle_diagonal_neg(self):
-        self.sudoku.diagonal_negative = self.diagonal_neg.isChecked()
-        self.update()
-
-    def toggle_antiking(self):
-        self.sudoku.antiking = self.antiking.isChecked()
-        self.update()
-
-    def toggle_antiknight(self):
-        self.sudoku.antiknight = self.antiknight.isChecked()
-        self.update()
-
-    def toggle_disjoint(self):
-        self.sudoku.disjoint_groups = self.disjoint_groups.isChecked()
-        self.update()
-
-    def toggle_nonconsecutive(self):
-        self.sudoku.nonconsecutive = self.nonconsecutive.isChecked()
-        self.update()
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         self.board.resizeEvent(event)
