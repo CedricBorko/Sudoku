@@ -1,0 +1,22 @@
+{
+ "digits": "000000000000000000000407000006000500000000000004000300000205000000000000000000000",
+ "constraints": {
+  "diagonal_positive": false,
+  "diagonal_negative": false,
+  "antiknight": true,
+  "antiking": false,
+  "disjoint_groups": false,
+  "nonconsecutive": true
+ },
+ "negative_constraints": {
+  "ratio": false,
+  "XV": false
+ },
+ "components": {
+  "lines": [],
+  "border": [],
+  "cages": [],
+  "cells": [],
+  "regions": []
+ }
+}

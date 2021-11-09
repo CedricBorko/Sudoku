@@ -1,6 +1,5 @@
 from __future__ import annotations
-import copy
-import math
+
 from abc import ABC
 from typing import List
 
@@ -8,6 +7,7 @@ from PySide6.QtCore import QPoint, QRect
 from PySide6.QtGui import QPainter, QBrush, QColor, QPen, QFont, Qt
 
 from sudoku import Sudoku, Cell
+from utils import SmartList
 
 
 class Component(ABC):
@@ -27,13 +27,16 @@ class Component(ABC):
 
 
 class BorderComponent(Component):
-    def __init__(self, sudoku: "Sudoku", indices: List[int]):
+    def __init__(self, sudoku: Sudoku, indices: List[int]):
         super().__init__(sudoku, indices)
 
     def __eq__(self, other):
         if isinstance(other, BorderComponent):
             return sorted(self.indices) == sorted(other.indices)
         return NotImplemented
+
+    def __lt__(self, other):
+        return min(self.indices) < min(other.indices)
 
     def other_cell(self, index: int):
         return self.cells[0] if self.cells[0].index != index else self.cells[1]
@@ -70,8 +73,13 @@ class BorderComponent(Component):
     def second(self):
         return self.cells[1]
 
+    def clear(self):
+        self.indices = []
+
 
 class Difference(BorderComponent):
+    NAME = "Difference"
+
     def __init__(self, sudoku: "Sudoku", indices: List[int], difference: int = 1):
         super().__init__(sudoku, indices)
 
@@ -82,6 +90,17 @@ class Difference(BorderComponent):
 
     def __repr__(self):
         return f"Difference of {self.difference} between {self.first} and {self.second}"
+
+    def to_json(self):
+        return {
+            "type": self.__class__.__name__,
+            "indices": self.indices,
+            "difference": self.difference
+        }
+
+    def set_value(self, number: int):
+        if 1 <= number <= 8:
+            self.difference = number
 
     def valid(self, index: int, number: int):
         if self.first.value != 0:
@@ -101,8 +120,8 @@ class Difference(BorderComponent):
 
         if c1.column == c2.column:  # Vertical
             center = QPoint(
-                cell_size + c1.column * cell_size,
-                cell_size + max(c1.row, c2.row) * cell_size + cell_size // 2
+                cell_size + c2.column * cell_size + cell_size // 2,
+                cell_size + c2.row * cell_size
             )
 
         else:  # Horizontal
@@ -111,11 +130,11 @@ class Difference(BorderComponent):
                 cell_size + c1.row * cell_size + cell_size // 2
             )
 
-        size = cell_size // 8
+        size = cell_size // 6
         painter.drawEllipse(center, size, size)
 
         if self.difference != 1:
-            painter.setFont(QFont("Verdana", 8, QFont.Bold))
+            painter.setFont(QFont("Varela Round", 10, QFont.Bold))
             painter.drawText(
                 QRect(center.x() - size // 2, center.y() - size // 2, size, size),
                 Qt.AlignHCenter | Qt.AlignVCenter,
@@ -136,12 +155,25 @@ class Ratio(BorderComponent):
         9: (1, 9)
     }
 
+    NAME = "Ratio"
+
     def __init__(self, sudoku: "Sudoku", indices: List[int], ratio: int = 2):
         super().__init__(sudoku, indices)
 
         self.ratio = ratio
         if ratio not in range(2, 10):
             raise ValueError("Ratio must be between 2 and 9")
+
+    def set_value(self, number: int):
+        if 2 <= number <= 9:
+            self.ratio = number
+
+    def to_json(self):
+        return {
+            "type": self.__class__.__name__,
+            "indices": self.indices,
+            "ratio": self.ratio
+        }
 
     def __repr__(self):
         return f"Ratio of {self.ratio} : {1} between {self.first} and {self.second}"
@@ -167,104 +199,27 @@ class Ratio(BorderComponent):
 
         if c1.column == c2.column:  # Vertical
             center = QPoint(
-                cell_size + c1.column * cell_size,
-                cell_size + max(c1.row, c2.row) * cell_size + cell_size // 2
+                cell_size + c2.column * cell_size + cell_size // 2,
+                cell_size + c2.row * cell_size
             )
 
         else:  # Horizontal
             center = QPoint(
-                cell_size + max(c1.column, c2.column) * cell_size,
+                cell_size + c2.column * cell_size,
                 cell_size + c1.row * cell_size + cell_size // 2
             )
 
-        size = cell_size // 8
+        size = cell_size // 6
         painter.drawEllipse(center, size, size)
 
         painter.setPen(QPen(QColor(255, 255, 255)))
         if self.ratio != 2:
-            painter.setFont(QFont("Verdana", 8, QFont.Bold))
+            painter.setFont(QFont("Varela Round", 10, QFont.Bold))
             painter.drawText(
                 QRect(center.x() - size // 2, center.y() - size // 2, size, size),
                 Qt.AlignHCenter | Qt.AlignVCenter,
                 str(self.ratio)
             )
-
-
-class KropkiDot(BorderComponent):
-    NAME = "Kropki Dot"
-
-    def __init__(self, sudoku: "Sudoku", indices: List[int], consecutive: bool = True):
-        super().__init__(sudoku, indices)
-
-        self.consecutive = consecutive
-
-    def __repr__(self):
-        return ', '.join(map(str, self.indices)) + " white" if self.consecutive else " black"
-
-    def deep_compare(self, other) -> bool:
-        if isinstance(other, KropkiDot):
-            return self.consecutive == other.consecutive
-        return False
-
-    def to_json(self):
-        return {
-            "type": self.__class__.__name__,
-            "indices": self.indices,
-            "white": self.consecutive
-        }
-
-    def valid(self, index: int, number: int) -> bool:
-
-        other = self.other_cell(index)
-
-        if self.consecutive:
-
-            if other.value != 0 and number not in (other.value - 1, other.value + 1):
-                return False
-
-        else:
-            if number in (5, 7, 9):
-                return False
-
-            combinations = {
-                1: (2,),
-                2: (1, 4),
-                3: (6,),
-                4: (2, 8),
-                5: (),
-                6: (3,),
-                7: (),
-                8: (4,),
-                9: ()
-            }
-
-            if other.value != 0 and number not in combinations[other.value]:
-                return False
-
-        return True
-
-    def draw(self, painter: QPainter, cell_size: int):
-
-        painter.setBrush(QBrush(QColor(255, 255, 255) if self.consecutive else QColor(0, 0, 0)))
-        painter.setPen(QPen(QColor(0, 0, 0), 2.0))
-        c1 = self.cells[0]
-        c2 = self.cells[1]
-        rect = c1.scaled_rect(cell_size, 0.25)
-
-        if c1.row - c2.row == -1:  # C1 above C2
-            rect.setY(rect.y() + cell_size // 2)
-
-        elif c1.row - c2.row == 1:
-            rect.setY(rect.y() - cell_size // 2)
-
-        elif c1.column - c2.column == -1:
-            rect.setX(rect.x() + cell_size // 2)
-        else:
-            rect.setX(rect.x() - cell_size // 2)
-
-        rect.setWidth(int(cell_size * 0.25))
-        rect.setHeight(int(cell_size * 0.25))
-        painter.drawEllipse(rect)
 
 
 class XVSum(BorderComponent):
@@ -282,6 +237,14 @@ class XVSum(BorderComponent):
             "total": self.total
         }
 
+    def set_value(self, v_pressed: bool, x_pressed: bool):
+        if v_pressed and x_pressed:
+            self.total = 15
+        elif v_pressed:
+            self.total = 5
+        elif x_pressed:
+            self.total = 10
+
     def deep_compare(self, other) -> bool:
         if isinstance(other, XVSum):
             return self.total == other.total
@@ -293,12 +256,18 @@ class XVSum(BorderComponent):
             return False
 
         if self.other_cell(index).value != 0 and self.other_cell(
-                index).value + number != self.total:
+            index).value + number != self.total:
             return False
 
         if self.other_cell(index).value == 0 and self.other_cell(index).valid_numbers:
             if self.total - number not in self.other_cell(index).valid_numbers:
                 return False
+
+        if number == 5:
+            return False
+
+        if self.total == 15 and number < 6:
+            return False
 
         return True
 
@@ -355,12 +324,13 @@ class XVSum(BorderComponent):
 class LessGreater(BorderComponent):
     NAME = "Less or Greater"
 
-    def __init__(self, sudoku: "Sudoku", indices: List[int], less: bool):
+    def __init__(self, sudoku: "Sudoku", indices: List[int], less: bool = True):
         super().__init__(sudoku, indices)
 
         self.less = less
 
-        self.indices.sort(reverse=not less)
+    def __repr__(self):
+        return f"{self.less=}"
 
     def to_json(self):
         return {
@@ -368,6 +338,9 @@ class LessGreater(BorderComponent):
             "indices": self.indices,
             "less": self.less
         }
+
+    def invert(self):
+        self.less = not self.less
 
     def deep_compare(self, other) -> bool:
         if isinstance(other, LessGreater):
@@ -378,18 +351,26 @@ class LessGreater(BorderComponent):
 
         if self.other_cell(index).value == 0:
             return True
+        other = self.other_cell(index)
+        position = self.pos(index)
 
-        if self.pos(index) == 0 and self.other_cell(index).value < number:
-            return False
+        if self.less:
 
-        if self.pos(index) == 1 and self.other_cell(index).value > number:
-            return False
+            if position == 0 and number < other.value:
+                return True
 
-        return True
+            if position == 1 and number > other.value:
+                return True
 
-    def create(self, indices: List[int]):
-        super(LessGreater, self).create(indices)
-        self.indices.sort(reverse=not self.less)
+        else:
+
+            if position == 0 and number > other.value:
+                return True
+
+            if position == 1 and number < other.value:
+                return True
+
+        return False
 
     def draw(self, painter: QPainter, cell_size: int):
         c1 = self.cells[0]
@@ -399,83 +380,89 @@ class LessGreater(BorderComponent):
         pen.setCapStyle(Qt.RoundCap)
         painter.setPen(pen)
 
-        # TOP LESS THAN BOTTOM
-        if c1.row - c2.row == -1:
+        if c1.column == c2.column:  # ABOVE EACH OTHER
+            if self.less:
+                painter.drawLine(
+                    cell_size + cell_size * c2.column + cell_size // 2,
+                    cell_size + cell_size * c2.row - cell_size // 6,
+                    cell_size + cell_size * c2.column + cell_size // 2 - cell_size // 4,
+                    cell_size + cell_size * c2.row + cell_size // 6,
+                )
 
-            painter.drawLine(
-                cell_size + cell_size * c2.column + cell_size // 2,
-                cell_size + cell_size * c2.row - cell_size // 6,
-                cell_size + cell_size * c2.column + cell_size // 2 - cell_size // 4,
-                cell_size + cell_size * c2.row + cell_size // 6,
-            )
+                painter.drawLine(
+                    cell_size + cell_size * c2.column + cell_size // 2,
+                    cell_size + cell_size * c2.row - cell_size // 6,
+                    cell_size + cell_size * c2.column + cell_size // 2 + cell_size // 4,
+                    cell_size + cell_size * c2.row + cell_size // 6,
+                )
+            else:
+                painter.drawLine(
+                    cell_size + cell_size * c2.column + cell_size // 2,
+                    cell_size + cell_size * c2.row + cell_size // 6,
+                    cell_size + cell_size * c2.column + cell_size // 2 - cell_size // 4,
+                    cell_size + cell_size * c2.row - cell_size // 6,
+                )
 
-            painter.drawLine(
-                cell_size + cell_size * c2.column + cell_size // 2,
-                cell_size + cell_size * c2.row - cell_size // 6,
-                cell_size + cell_size * c2.column + cell_size // 2 + cell_size // 4,
-                cell_size + cell_size * c2.row + cell_size // 6,
-            )
-
-        # BOTTOM LESS THAN TOP
-        elif c1.row - c2.row == 1:
-
-            painter.drawLine(
-                cell_size + cell_size * c2.column + cell_size // 2,
-                cell_size + cell_size * c1.row + cell_size // 6,
-                cell_size + cell_size * c2.column + cell_size // 2 - cell_size // 4,
-                cell_size + cell_size * c1.row - cell_size // 6,
-            )
-
-            painter.drawLine(
-                cell_size + cell_size * c2.column + cell_size // 2,
-                cell_size + cell_size * c1.row + cell_size // 6,
-                cell_size + cell_size * c2.column + cell_size // 2 + cell_size // 4,
-                cell_size + cell_size * c1.row - cell_size // 6,
-            )
-
-        # LEFT SMALLER THAN RIGHT
-        elif c1.column - c2.column == -1:
-
-            painter.drawLine(
-                cell_size + cell_size * c2.column - cell_size // 6,
-                cell_size + cell_size * c2.row + cell_size // 2,
-                cell_size + cell_size * c2.column + cell_size // 6,
-                cell_size + cell_size * c2.row + cell_size // 2 - cell_size // 4,
-            )
-
-            painter.drawLine(
-                cell_size + cell_size * c2.column - cell_size // 6,
-                cell_size + cell_size * c2.row + cell_size // 2,
-                cell_size + cell_size * c2.column + cell_size // 6,
-                cell_size + cell_size * c2.row + cell_size // 2 + cell_size // 4,
-            )
-
-        # LEFT BIGGER THAN RIGHT
+                painter.drawLine(
+                    cell_size + cell_size * c2.column + cell_size // 2,
+                    cell_size + cell_size * c2.row + cell_size // 6,
+                    cell_size + cell_size * c2.column + cell_size // 2 + cell_size // 4,
+                    cell_size + cell_size * c2.row - cell_size // 6,
+                )
         else:
+            if self.less:
+                painter.drawLine(
+                    cell_size + cell_size * c2.column - cell_size // 6,
+                    cell_size + cell_size * c2.row + cell_size // 2,
+                    cell_size + cell_size * c2.column + cell_size // 6,
+                    cell_size + cell_size * c2.row + cell_size // 2 - cell_size // 4,
+                )
 
-            painter.drawLine(
-                cell_size + cell_size * c1.column - cell_size // 6,
-                cell_size + cell_size * c1.row + cell_size // 4,
-                cell_size + cell_size * c1.column + cell_size // 6,
-                cell_size + cell_size * c1.row + cell_size // 2,
-            )
+                painter.drawLine(
+                    cell_size + cell_size * c2.column - cell_size // 6,
+                    cell_size + cell_size * c2.row + cell_size // 2,
+                    cell_size + cell_size * c2.column + cell_size // 6,
+                    cell_size + cell_size * c2.row + cell_size // 2 + cell_size // 4,
+                )
+            # BOTTOM LESS THAN TOP
+            else:
+                painter.drawLine(
+                    cell_size + cell_size * c2.column - cell_size // 6,
+                    cell_size + cell_size * c2.row + cell_size // 4,
+                    cell_size + cell_size * c2.column + cell_size // 6,
+                    cell_size + cell_size * c2.row + cell_size // 2,
+                )
 
-            painter.drawLine(
-                cell_size + cell_size * c1.column + cell_size // 6,
-                cell_size + cell_size * c1.row + cell_size // 2,
-                cell_size + cell_size * c1.column - cell_size // 6,
-                cell_size + cell_size * c1.row + cell_size // 2 + cell_size // 5,
-            )
+                painter.drawLine(
+                    cell_size + cell_size * c2.column + cell_size // 6,
+                    cell_size + cell_size * c2.row + cell_size // 2,
+                    cell_size + cell_size * c2.column - cell_size // 6,
+                    cell_size + cell_size * c2.row + cell_size // 2 + cell_size // 5,
+                )
 
 
 class Quadruple(BorderComponent):
     NAME = "Quadruple"
 
-    def __init__(self, sudoku: "Sudoku", indices: List[int], numbers: List[int]):
+    def __init__(self, sudoku: "Sudoku", indices: List[int], numbers: SmartList[int]):
         super().__init__(sudoku, indices)
 
         self.numbers = numbers
         self.selected = False
+
+    def to_json(self):
+        return {
+            "type": self.__class__.__name__,
+            "indices": self.indices,
+            "numbers": self.numbers
+        }
+
+    def set_value(self, number):
+        self.numbers.append(number)
+
+    def clear(self):
+        super(Quadruple, self).clear()
+        self.numbers = SmartList(max_length=4)
 
     def deep_compare(self, other) -> bool:
         if isinstance(other, Quadruple):

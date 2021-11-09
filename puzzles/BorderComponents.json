@@ -1,0 +1,86 @@
+{
+  "digits": "000000000000000020000000000000000000100000000000000000000000000000000000000000000",
+  "constraints": {
+    "diagonal_positive": false,
+    "diagonal_negative": false,
+    "antiknight": false,
+    "antiking": false,
+    "disjoint_groups": false,
+    "nonconsecutive": false
+  },
+  "negative_constraints": {
+    "ratio": false,
+    "XV": false
+  },
+  "components": {
+    "lines": [],
+    "border": [
+      {
+        "type": "XVSum",
+        "indices": [
+          12,
+          13
+        ],
+        "total": 5
+      },
+      {
+        "type": "Quadruple",
+        "indices": [
+          15,
+          16,
+          24,
+          25
+        ],
+        "numbers": [
+          3,
+          4,
+          6,
+          7
+        ]
+      },
+      {
+        "type": "XVSum",
+        "indices": [
+          21,
+          22
+        ],
+        "total": 10
+      },
+      {
+        "type": "LessGreater",
+        "indices": [
+          32,
+          33
+        ],
+        "less": true
+      },
+      {
+        "type": "Difference",
+        "indices": [
+          41,
+          42
+        ],
+        "difference": 3
+      },
+      {
+        "type": "Ratio",
+        "indices": [
+          47,
+          48
+        ],
+        "ratio": 2
+      },
+      {
+        "type": "XVSum",
+        "indices": [
+          63,
+          64
+        ],
+        "total": 15
+      }
+    ],
+    "cages": [],
+    "cells": [],
+    "regions": []
+  }
+}

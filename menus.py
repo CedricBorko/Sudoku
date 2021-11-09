@@ -1,165 +1,16 @@
 from __future__ import annotations
 
-from typing import Type
+import copy
 
-from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QMenu, QCheckBox, QWidget, QFrame, QVBoxLayout, QLabel, QPushButton, QButtonGroup
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QCheckBox, QFrame, QVBoxLayout, QPushButton, \
+    QButtonGroup, QSizePolicy, QHBoxLayout
 
-from components.border_constraints import XVSum, KropkiDot, LessGreater, Quadruple, Component, BorderComponent
-from components.line_constraints import Arrow, Thermometer, GermanWhispersLine, PalindromeLine, LineComponent
-from components.region_constraints import RegionComponent
-
-
-class ComponentsMenu(QMenu):
-    def __init__(self, window: "SudokuWindow"):
-        super().__init__(window)
-
-        self.setTitle("Components")
-
-        self.window_ = window
-        self.sudoku = window.sudoku
-
-        self.kropki_menu = KropkiSubMenu(self)
-        self.xv_menu = XVSubMenu(self)
-        self.less_greater = LessGreaterSubMenu(self)
-
-        self.quadruple_action = QAction("Quadruple")
-        self.quadruple_action.triggered.connect(
-            lambda: self.set_border_component(Quadruple(self.sudoku, [], []))
-        )
-
-        self.thermometer_action = QAction("Thermometer")
-        self.thermometer_action.triggered.connect(
-            lambda: self.set_cell_component(Thermometer(self.sudoku, []))
-        )
-
-        self.german_whispers_action = QAction("German Whispers")
-        self.german_whispers_action.triggered.connect(
-            lambda: self.set_cell_component(GermanWhispersLine(self.sudoku, []))
-        )
-
-        self.palindrome_action = QAction("Palindrome")
-        self.palindrome_action.triggered.connect(
-            lambda: self.set_cell_component(PalindromeLine(self.sudoku, []))
-        )
-
-        self.addMenu(self.kropki_menu)
-        self.addMenu(self.xv_menu)
-        self.addMenu(self.less_greater)
-        self.addAction(self.quadruple_action)
-        self.addAction(self.thermometer_action)
-        self.addAction(self.german_whispers_action)
-        self.addAction(self.palindrome_action)
-
-    def update(self) -> None:
-        self.window_.update()
-
-    def set_border_component(self, component: Component):
-        self.window_.board.making_quadruple = isinstance(component, Quadruple)
-        self.window_.board.border_component = component
-        self.window_.board.cell_component = None
-
-        self.window_.current_component_label.setText(f"Creating {component.NAME}")
-
-    def set_cell_component(self, component: Component):
-        self.window_.board.border_component = None
-        self.window_.board.cell_component = component
-        self.window_.current_component_label.setText(f"Creating {component.NAME}")
-
-
-class KropkiSubMenu(QMenu):
-    def __init__(self, parent: ComponentsMenu):
-        super().__init__(parent)
-
-        self.setTitle("Kropki Dot")
-
-        self.menu = parent
-
-        self.white = ComponentAction(self, "White")
-        self.black = ComponentAction(self, "Black")
-
-        self.white.triggered.connect(
-            lambda: self.menu.set_border_component(KropkiDot(self.menu.sudoku, [], True))
-        )
-
-        self.black.triggered.connect(
-            lambda: self.menu.set_border_component(KropkiDot(self.menu.sudoku, [], False))
-        )
-
-        self.addAction(self.white)
-        self.addAction(self.black)
-
-
-class XVSubMenu(QMenu):
-    def __init__(self, parent: ComponentsMenu):
-        super().__init__(parent)
-
-        self.setTitle("XV Sum")
-
-        self.menu = parent
-
-        self.v_sum = ComponentAction(self, "V")
-        self.x_sum = ComponentAction(self, "X")
-        self.xv_sum = ComponentAction(self, "XV")
-
-        self.v_sum.triggered.connect(
-            lambda: self.menu.set_border_component(XVSum(self.menu.sudoku, [], 5))
-        )
-
-        self.x_sum.triggered.connect(
-            lambda: self.menu.set_border_component(XVSum(self.menu.sudoku, [], 10))
-        )
-
-        self.xv_sum.triggered.connect(
-            lambda: self.menu.set_border_component(XVSum(self.menu.sudoku, [], 15))
-        )
-
-        self.addAction(self.v_sum)
-        self.addAction(self.x_sum)
-        self.addAction(self.xv_sum)
-
-
-class LessGreaterSubMenu(QMenu):
-    def __init__(self, parent: ComponentsMenu):
-        super().__init__(parent)
-
-        self.setTitle("Less / Greater")
-
-        self.menu = parent
-
-        self.less = ComponentAction(self, "Less")
-        self.greater = ComponentAction(self, "Greater")
-
-        self.less.triggered.connect(
-            lambda: self.menu.set_border_component(LessGreater(self.menu.sudoku, [], True))
-        )
-
-        self.greater.triggered.connect(
-            lambda: self.menu.set_border_component(LessGreater(self.menu.sudoku, [], False))
-        )
-
-        self.addAction(self.less)
-        self.addAction(self.greater)
-
-
-class ComponentAction(QAction):
-
-    def __init__(self, parent: QMenu, name: str, border: bool = False):
-        super().__init__(parent)
-
-        self.setText(name)
-
-        self.menu = parent
-        self.name = name
-        self.is_border_component = border
-
-    def set_component(self):
-
-        if self.is_border_component:
-            match self.name:
-
-                case "White":
-                    pass
+from components.border_constraints import XVSum, LessGreater, Quadruple, BorderComponent, Ratio, \
+    Difference
+from components.line_constraints import LineComponent
+from components.region_constraints import RegionComponent, Sandwich
+from utils import SmartList
 
 
 class ComponentMenu(QFrame):
@@ -169,32 +20,68 @@ class ComponentMenu(QFrame):
         self.window_ = parent
         self.sudoku = parent.sudoku
 
+        self.toggle_btn = QPushButton("Toggle Components")
+        self.toggle_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.toggle_btn.setFixedHeight(40)
+        self.toggle_btn.clicked.connect(self.toggle_buttons)
+
         self.component_group = QButtonGroup()
 
         self.layout_ = QVBoxLayout(self)
         self.layout_.setContentsMargins(0, 0, 0, 0)
         self.layout_.setSpacing(5)
+        self.layout_.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
 
-        self.add_button(ComponentButton(self, KropkiDot))
+        self.layout_.addWidget(self.toggle_btn)
+
+        self.hidden_button = QPushButton()
+        self.hidden_button.hide()
+        self.hidden_button.setCheckable(True)
+        self.hidden_button.setChecked(True)
+
+        self.component_group.addButton(self.hidden_button)
+
+        self.add_button(ComponentButton(self, Ratio(self.sudoku, [])))
+        self.add_button(ComponentButton(self, Difference(self.sudoku, [])))
+        self.add_button(ComponentButton(self, XVSum(self.sudoku, [])))
+        self.add_button(ComponentButton(self, Quadruple(self.sudoku, [], SmartList(max_length=4))))
+        self.add_button(ComponentButton(self, LessGreater(self.sudoku, [])))
+        self.add_button(ComponentButton(self, Sandwich(self.sudoku, col=0, row=0, total=0)))
+
+
+    def toggle_buttons(self):
+        for button in self.component_group.buttons():
+            if button is not self.hidden_button:
+                button.setVisible(not button.isVisible())
 
     def add_button(self, button: ComponentButton):
         self.component_group.addButton(button)
         self.layout_.addWidget(button)
 
     def set_component(self, component: BorderComponent | LineComponent | RegionComponent):
-        print(component)
+        self.window_.board.making_quadruple = isinstance(component, Quadruple)
+        self.window_.board.current_component = copy.copy(component)
+        self.window_.board.selected.clear()
+        self.window_.update()
+
+    def uncheck(self):
+        self.hidden_button.setChecked(True)
 
 
 class ComponentButton(QPushButton):
     def __init__(
-            self,
-            parent: ComponentMenu,
-            component: Type[BorderComponent] | Type[LineComponent] | Type[RegionComponent]
+        self,
+        parent: ComponentMenu,
+        component: BorderComponent | LineComponent | RegionComponent
     ):
         super().__init__(parent)
 
         self.menu = parent
         self.sudoku = parent.sudoku
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.setMinimumWidth(200)
+
+        self.setFixedHeight(40)
 
         self.component = component
 
@@ -206,8 +93,6 @@ class ComponentButton(QPushButton):
         self.clicked.connect(lambda: self.menu.set_component(self.component))
 
 
-
-
 class ConstraintsMenu(QFrame):
     def __init__(self, parent: "SudokuWindow"):
         super().__init__(parent)
@@ -215,8 +100,8 @@ class ConstraintsMenu(QFrame):
         self.window_ = parent
         self.sudoku = parent.sudoku
 
-        self.diagonal_pos = ConstraintCheckBox(self, "Diagonal +")
-        self.diagonal_neg = ConstraintCheckBox(self, "Diagonal -")
+        self.diagonal_positive = ConstraintCheckBox(self, "Diagonal +")
+        self.diagonal_negative = ConstraintCheckBox(self, "Diagonal -")
 
         self.antiknight = ConstraintCheckBox(self, "Antiknight")
         self.antiking = ConstraintCheckBox(self, "Antiking")
@@ -224,13 +109,21 @@ class ConstraintsMenu(QFrame):
         self.disjoint_groups = ConstraintCheckBox(self, "Disjoint Groups")
         self.nonconsecutive = ConstraintCheckBox(self, "Nonconsecutive")
 
-        self.layout_ = QVBoxLayout(self)
-        self.layout_.setContentsMargins(0, 0, 0, 0)
-        self.layout_.setSpacing(5)
+        self.toggle_btn = QPushButton("Toggle Constraints")
+        self.toggle_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.toggle_btn.setMinimumWidth(200)
+        self.toggle_btn.setFixedHeight(40)
 
-        self.layout_.addWidget(QLabel("Constraints", self))
-        self.layout_.addWidget(self.diagonal_pos)
-        self.layout_.addWidget(self.diagonal_neg)
+        self.toggle_btn.clicked.connect(self.toggle_menu)
+
+        self.layout_ = QHBoxLayout(self)
+        self.layout_.setContentsMargins(10, 0, 10, 0)
+        self.layout_.setSpacing(5)
+        self.layout_.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
+
+        self.layout_.addWidget(self.toggle_btn)
+        self.layout_.addWidget(self.diagonal_positive)
+        self.layout_.addWidget(self.diagonal_negative)
         self.layout_.addWidget(self.antiknight)
         self.layout_.addWidget(self.antiking)
         self.layout_.addWidget(self.disjoint_groups)
@@ -238,14 +131,37 @@ class ConstraintsMenu(QFrame):
 
     def update(self) -> None:
         self.window_.update()
+        self.diagonal_positive.setChecked(self.sudoku.diagonal_positive)
+        self.diagonal_negative.setChecked(self.sudoku.diagonal_negative)
+
+        self.antiknight.setChecked(self.sudoku.antiknight)
+        self.antiking.setChecked(self.sudoku.antiking)
+        self.disjoint_groups.setChecked(self.sudoku.disjoint_groups)
+        self.nonconsecutive.setChecked(self.sudoku.nonconsecutive)
+
+    def toggle_menu(self):
+        for item in self.children():
+            if not isinstance(item, ConstraintCheckBox):
+                continue
+            item.setVisible(not item.isVisible())
+
+    def reset(self):
+        for item in self.children():
+            if not isinstance(item, ConstraintCheckBox):
+                continue
+            item.setChecked(False)
 
 
 class ConstraintCheckBox(QCheckBox):
-    def __init__(self, frame: QFrame, name: str):
+    def __init__(self, frame: ConstraintsMenu, name: str):
         super().__init__(frame)
 
         self.setText(name)
         self.setCheckable(True)
+
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.setMinimumWidth(200)
+        self.setFixedHeight(40)
 
         self.frame = frame
         self.name = name

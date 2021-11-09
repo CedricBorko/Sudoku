@@ -1,21 +1,16 @@
 from __future__ import annotations
+
 import copy
 import itertools
-import math
-import multiprocessing
 import os
-import random
-import sys
-import threading
 import time
-from typing import List, Optional, Set, Tuple
+from typing import List, Optional, Set
 
-import numpy as np
-from PySide6.QtCore import QPoint, QRect, QTimer
-from PySide6.QtGui import QPainter, QPolygon
+from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtGui import QPainter, QPolygon, QColor
 from PySide6.QtWidgets import QFileDialog
 
-from utils import StoppableThread, uniquify
+from utils import StoppableThread, SmartList, uniquify
 
 NORTH = 0
 EAST = 1
@@ -27,10 +22,10 @@ class Cell:
     def __init__(self, index: int, value: int = 0):
         self.index = index
 
-        self.valid_numbers = []
-        self.corner = []
+        self.valid_numbers = SmartList()
+        self.corner = SmartList(max_length=4)
         self.value = value
-        self.color = None
+        self.colors = SmartList(max_length=4)
 
         self.impossible_numbers = []
 
@@ -69,11 +64,180 @@ class Cell:
         self.edge_id = [0, 0, 0, 0]
         self.edge_exists = [False, False, False, False]
 
+    def reset_values(self, skip_value: bool = False):
+        if not skip_value:
+            self.value = 0
+        self.valid_numbers.clear()
+        self.corner.clear()
+        self.colors.clear()
+
     def __lt__(self, other):
         return self.value < other.value
 
     def __le__(self, other):
         return self.value <= other.value
+
+    def draw_colors(self, painter: QPainter, cell_size: int):
+        amount = len(self.colors)
+        rect = self.rect(cell_size)
+        center = rect.center()
+        painter.setPen(Qt.NoPen)
+
+        match amount:
+            case 1:
+                painter.fillRect(self.rect(cell_size), self.colors[0])
+
+            case 2:
+                painter.setBrush(self.colors[0])
+                painter.drawPolygon(
+                    QPolygon(
+                        [
+                            QPoint(rect.x(), rect.y()),
+                            QPoint(rect.x() + cell_size, rect.y()),
+                            QPoint(rect.x() + cell_size, rect.y() + cell_size),
+                        ]
+                    )
+                )
+
+                painter.setBrush(self.colors[1])
+                painter.drawPolygon(
+                    QPolygon(
+                        [
+                            QPoint(rect.x() + cell_size, rect.y() + cell_size),
+                            QPoint(rect.x(), rect.y() + cell_size),
+                            QPoint(rect.x(), rect.y()),
+                        ]
+                    )
+                )
+
+            case 3:
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(self.colors[0])
+                painter.drawPolygon(
+                    QPolygon(
+                        [
+                            QPoint(rect.x() + cell_size // 3, rect.y()),
+                            center,
+                            QPoint(rect.x(), rect.y() + cell_size),
+                            QPoint(rect.x(), rect.y())
+                        ]
+                    )
+                )
+
+                painter.setBrush(self.colors[1])
+                painter.drawPolygon(
+                    QPolygon(
+                        [
+                            QPoint(rect.x() + cell_size // 3, rect.y()),
+                            QPoint(rect.x() + cell_size, rect.y()),
+                            QPoint(rect.x() + cell_size, rect.y() + cell_size // 3 * 2),
+                            center
+                        ]
+                    )
+                )
+
+                painter.setBrush(self.colors[2])
+                painter.drawPolygon(
+                    QPolygon(
+                        [
+                            QPoint(rect.x() + cell_size, rect.y() + cell_size // 3 * 2),
+                            QPoint(rect.x() + cell_size, rect.y() + cell_size),
+                            QPoint(rect.x(), rect.y() + cell_size),
+                            center
+                        ]
+                    )
+                )
+
+            case 4:
+                painter.setBrush(self.colors[0])
+                painter.drawPolygon(
+                    QPolygon(
+                        [
+                            QPoint(rect.x(), rect.y()),
+                            QPoint(rect.x() + cell_size, rect.y()),
+                            center
+                        ]
+                    )
+                )
+
+                painter.setBrush(self.colors[1])
+                painter.drawPolygon(
+                    QPolygon(
+                        [
+                            QPoint(rect.x() + cell_size, rect.y()),
+                            QPoint(rect.x() + cell_size, rect.y() + cell_size),
+                            center
+                        ]
+                    )
+                )
+
+                painter.setBrush(self.colors[2])
+                painter.drawPolygon(
+                    QPolygon(
+                        [
+                            QPoint(rect.x() + cell_size, rect.y() + cell_size),
+                            QPoint(rect.x(), rect.y() + cell_size),
+                            center
+                        ]
+                    )
+                )
+
+                painter.setBrush(self.colors[3])
+                painter.drawPolygon(
+                    QPolygon(
+                        [
+                            QPoint(rect.x(), rect.y() + cell_size),
+                            QPoint(rect.x(), rect.y()),
+                            center
+                        ]
+                    )
+                )
+
+    def corners(self, number: int) -> Qt.Alignment:
+        match sorted(self.corner).index(number):
+            case 0:
+                return Qt.AlignTop | Qt.AlignLeft
+            case 1:
+                return Qt.AlignTop | Qt.AlignRight
+            case 2:
+                return Qt.AlignBottom | Qt.AlignLeft
+            case 3:
+                return Qt.AlignBottom | Qt.AlignRight
+            case _:
+                return Qt.AlignCenter
+
+    def set_values(self, mode: int, value: int | QColor, COLORS: List[QColor]):
+
+        match mode:
+
+            case 0:  # NORMAL
+                self.value = value
+
+            case 1:  # CENTER
+                self.valid_numbers.append(value)
+
+            case 2:  # CORNER
+                self.corner.append(value)
+
+            case 3:  # COLOR
+                self.colors.append(COLORS[value - 1])
+
+    def clear_values(self, sudoku: Sudoku, mode: int):
+        match mode:
+
+            case 0:  # NORMAL
+                if sudoku.initial_state[self.index].value == 0:
+                    self.value = 0
+
+            case 1:  # CENTER
+
+                self.valid_numbers.clear()
+
+            case 2:  # CORNER
+                self.corner.clear()
+
+            case 3:  # COLOR
+                self.colors.clear()
 
 
 class Edge:
@@ -304,12 +468,12 @@ class Sudoku:
         self.cages: List["Cage"] = []
 
         self.lines = []
-        self.border_constraints = []
+        self.border_constraints = SmartList()
 
-        self.forced_odds: List[int] = []
-        self.forced_evens: List[int] = []
+        self.cell_components = []
+        self.region_components = SmartList()
 
-        self.brute_force_time = 5
+        self.brute_force_time = 20
 
     def start_process(self):
         thread = StoppableThread(target=self.brute_force_countdown)
@@ -320,25 +484,102 @@ class Sudoku:
             self.brute_force_time -= 1
             time.sleep(1)
 
-    @classmethod
-    def from_file(cls):
-        with open("sudokus.txt", "r") as f:
-            index = random.randint(0, 49)
-            index = index * 10 + 1
+    def to_file(self):
+        import json
+        filename, ext = QFileDialog.getSaveFileName(dir=os.getcwd(), filter="(*.json)")
 
-            data = f.readlines()
+        data = {
 
-            lines = ''.join(list(itertools.chain(*data[index:index + 9])))
-            lines = lines.replace("\n", "")
-            empty = ""
-            for c in lines:
-                if c not in cls.NUMBERS:
-                    empty = c
-                    break
+            "digits": ''.join(str(cell.value) for cell in self.board),
+            "constraints": {
+                "diagonal_positive": self.diagonal_positive,
+                "diagonal_negative": self.diagonal_negative,
+                "antiknight": self.antiknight,
+                "antiking": self.antiking,
+                "disjoint_groups": self.disjoint_groups,
+                "nonconsecutive": self.nonconsecutive
+            },
+            "negative_constraints": {
+                "ratio": False,
+                "XV": False
+            },
+            "components": {
+                "lines": [line.to_json() for line in self.lines],
+                "border": [cmp.to_json() for cmp in self.border_constraints],
+                "cages": [cage.to_json() for cage in self.cages],
+                "cells": [cell_cmp.to_json() for cell_cmp in self.cell_components],
+                "regions": [region_cmp.to_json() for region_cmp in self.region_components]
+            }
 
-            lines = lines.replace(empty, "0")
+        }
 
-            return cls.from_string(lines)
+        with open(filename, "w") as file:
+            json.dump(data, file, indent=1)
+
+    def from_file(self):
+        import json
+
+        from components import border_constraints, cell_constraint, region_constraints
+
+        path, extension = QFileDialog.getOpenFileName(dir=os.getcwd(), filter="(*.json)")
+
+        self.cages.clear()
+
+        self.lines.clear()
+        self.border_constraints.clear()
+
+        self.cell_components.clear()
+        self.region_components.clear()
+
+        with open(path, "r") as file:
+            data = json.load(file)
+            for i in range(81):
+                self.initial_state[i].value = int(data["digits"][i])
+                self.board[i].value = int(data["digits"][i])
+
+            for key, val in data["constraints"].items():
+                setattr(self, key, val)
+
+            for item in data["components"]["border"]:
+                match item["type"]:
+
+                    case "XVSum":
+                        obj = border_constraints.XVSum(self, item["indices"], item["total"])
+
+                    case "Difference":
+                        obj = border_constraints.Difference(self, item["indices"],
+                                                            item["difference"])
+
+                    case "Ratio":
+                        obj = border_constraints.Ratio(self, item["indices"], item["ratio"])
+
+                    case "Quadruple":
+                        obj = border_constraints.Quadruple(self, item["indices"], SmartList(max_length=4))
+                        for val in item["numbers"]:
+                            obj.numbers.append(val)
+
+                    case "LessGreater":
+                        obj = border_constraints.LessGreater(self, item["indices"], item["less"])
+
+                self.border_constraints.append(obj)
+
+            for item in data["components"]["cells"]:
+                match item["type"]:
+
+                    case "EvenDigit":
+                        obj = cell_constraint.EvenDigit(self, item["index"])
+                        self.cell_components.append(obj)
+
+                    case "OddDigit":
+                        obj = cell_constraint.OddDigit(self, item["index"])
+                        self.cell_components.append(obj)
+
+            for item in data["components"]["regions"]:
+                match item["type"]:
+                    case "Sandwich":
+                        obj = region_constraints.Sandwich(self, item["col"], item["row"],
+                                                          item["total"])
+                        self.region_components.append(obj)
 
     @classmethod
     def from_string(cls, board_str: str):
@@ -606,15 +847,11 @@ class Sudoku:
 
                 return False
 
-        if index in self.forced_odds and number % 2 == 0:
-            if show_constraint:
-                print("Cell", index, "MUST BE ODD")
-            return False
-
-        if index in self.forced_evens and number % 2 != 0:
-            if show_constraint:
-                print("Cell", index, "MUST BE EVEN")
-            return False
+        for cell_cmp in self.cell_components:
+            if index != cell_cmp.index:
+                continue
+            if not cell_cmp.valid(index, number):
+                return False
 
         if self.disjoint_groups:
             this_box = self.get_entire_box(index)
@@ -712,36 +949,3 @@ class Sudoku:
         return Sudoku.from_string(
             "0" * 81
         )
-
-    def to_file(self):
-        import json
-        folder = QFileDialog.getExistingDirectory(dir=os.getcwd())
-        data = {
-
-            "digits": [''.join(str(cell.value) for cell in self.get_entire_row(i)) for i in
-                       range(0, 81, 9)],
-            "constraints": {
-                "diagonal_pos": self.diagonal_positive,
-                "diagonal_neg": self.diagonal_negative,
-                "antiknight": self.antiknight,
-                "antiking": self.antiking,
-                "disjoint_groups": self.disjoint_groups,
-                "nonconsecutive": self.nonconsecutive
-            },
-            "negative_constraints": {
-                "ratio": False,
-                "XV": False
-            },
-            "components": {
-                "lines": [line.to_json() for line in self.lines],
-                "dots": [dot.to_json() for dot in self.border_constraints],
-                "cages": [cage.to_json() for cage in self.cages],
-                "odds": self.forced_odds,
-                "evens": self.forced_evens
-            }
-
-        }
-
-        path = uniquify(folder + "/sudoku.json")
-        with open(path, "w") as file:
-            json.dump(data, file, indent=2)

@@ -1,7 +1,9 @@
 import itertools
 import os
 import threading
-from typing import List, Tuple, T
+from typing import Tuple, T
+
+from PySide6.QtGui import QColor
 
 
 def n_digit_sums(amount: int, target: int,
@@ -53,14 +55,23 @@ def uniquify(path):
 
 
 class SmartList(list):
-    def __init__(self):
+    def __init__(self, max_length: int = None):
         super().__init__()
+
+        self.max_length = max_length
 
     def append(self, __object: T) -> None:
         if __object in self:
             self.remove(__object)
         else:
+            if len(self) == self.max_length:
+                return
             super(SmartList, self).append(__object)
 
+        if isinstance(__object, QColor):
+            self.sort(key=lambda color: color.redF())
+        else:
+            self.sort()
 
-s = SmartList()
+    def only(self, __object: T) -> bool:
+        return len(self) == 1 and __object in self

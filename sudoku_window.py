@@ -1,18 +1,15 @@
 import datetime
-import itertools
-from datetime import date
 
-from PySide6.QtCore import Qt, QTimer, QEvent, QPoint
-from PySide6.QtGui import QCursor, QMouseEvent, QIcon, QResizeEvent, QEnterEvent, QPixmap, QAction
-from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QFrame, QLabel, QHBoxLayout, QPushButton, \
-    QWidget, QSizeGrip, QComboBox, QGridLayout, QMenu, QSizePolicy, QCheckBox
+from PySide6.QtCore import Qt, QEvent
+from PySide6.QtGui import QCursor, QMouseEvent, QIcon, QResizeEvent, QEnterEvent, QAction
+from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QFrame, QHBoxLayout, QPushButton, \
+    QWidget, QSizeGrip, QComboBox, QGridLayout, QMenu, QSizePolicy, QCheckBox, QApplication
 
 from board import SudokuBoard
-from components.border_constraints import KropkiDot, XVSum, LessGreater, Quadruple, Ratio, Difference
-
-from menus import ConstraintsMenu, ComponentsMenu, ComponentMenu
+from components.cell_constraint import EvenDigit, OddDigit
+from components.region_constraints import Sandwich
+from menus import ConstraintsMenu, ComponentMenu
 from sudoku import Sudoku
-from components.line_constraints import GermanWhispersLine, PalindromeLine, Thermometer, Arrow
 
 
 class SudokuWindow(QMainWindow):
@@ -24,8 +21,6 @@ class SudokuWindow(QMainWindow):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.statusBar().hide()
 
-        self.setFixedSize(1280, 900)
-
         self.setStyleSheet(
             "QSizeGrip{border: none}"
             "QWidget{font: 12pt Times New Roman}"
@@ -36,6 +31,7 @@ class SudokuWindow(QMainWindow):
             "QFrame#title_bar QLabel{font-weight: bold}"
             "QPushButton{background: transparent; border: 1px solid rgb(120, 120, 120)}"
             "QPushButton:hover{background: white}"
+            "QPushButton:checked{border: 4px solid #01C4FF; background: #CCCCCC; font-weight: bold}"
             "QMenu{background: white}"
             "QMenu:separator{background: #6A6A6A; height: 2px; margin: 4px}"
             "QMenu:item{padding-right: 10px; padding-left: 10px; height: 30px; width: 250px; border: none}"
@@ -57,25 +53,7 @@ class SudokuWindow(QMainWindow):
 
         self.adding_component = False
 
-        self.sudoku = Sudoku.from_string(
-            "000000000"
-            "500000000"
-            "000000000"
-            "400000000"
-            "200000000"
-            "000000000"
-            "000000000"
-            "000000000"
-            "300000000"
-        )
-
-        self.sudoku.border_constraints.append(Difference(self.sudoku, [4, 5], 5))
-        self.sudoku.border_constraints.append(Difference(self.sudoku, [5, 6], 3))
-
-        self.sudoku.border_constraints.append(Difference(self.sudoku, [13, 14], 2))
-        self.sudoku.border_constraints.append(Difference(self.sudoku, [14, 15], 4))
-
-        self.sudoku.calculate_valid_numbers()
+        self.sudoku = Sudoku.blank()
 
         ############################################################################################
         ############################################################################################
@@ -85,6 +63,7 @@ class SudokuWindow(QMainWindow):
         self.setCentralWidget(self.central_frame)
 
         self.title_bar = SudokuTitleBar(self)
+        self.title_bar.move_center()
 
         self.mode_switch = QComboBox(self)
         self.mode_switch.setFixedHeight(40)
@@ -92,62 +71,72 @@ class SudokuWindow(QMainWindow):
 
         self.solve_btn = QPushButton("Solve")
         self.solve_btn.setFixedHeight(40)
+        self.solve_btn.setMinimumWidth(200)
         self.solve_btn.setCursor(QCursor(Qt.PointingHandCursor))
 
+        self.clear_btn = QPushButton("Clear Grid")
+        self.clear_btn.setFixedHeight(40)
+        self.clear_btn.setMinimumWidth(200)
+        self.clear_btn.setCursor(QCursor(Qt.PointingHandCursor))
+
+        self.save_btn = QPushButton("Save Grid")
+        self.save_btn.setFixedHeight(40)
+        self.save_btn.setMinimumWidth(200)
+        self.save_btn.setCursor(QCursor(Qt.PointingHandCursor))
+
+        self.load_btn = QPushButton("Load Grid")
+        self.load_btn.setFixedHeight(40)
+        self.load_btn.setMinimumWidth(200)
+        self.load_btn.setCursor(QCursor(Qt.PointingHandCursor))
+
         self.highlight_cells_box = QCheckBox("Highlight Cells seen from selection", self)
-        self.highlight_cells_box.setChecked(True)
+        self.highlight_cells_box.setChecked(False)
         self.highlight_cells_box.clicked.connect(self.update)
 
-        ############################################################################################
-
-        self.component_menu = ComponentsMenu(self)
-
-        self.component_btn = QPushButton("Components")
-        self.component_btn.setMenu(self.component_menu)
-        self.component_btn.setFixedHeight(40)
-        self.component_btn.setMinimumWidth(200)
-
         self.constraints_menu = ConstraintsMenu(self)
-        self.components_menu = ComponentMenu(self)
-
-        self.current_component_label = QLabel(self)
+        self.component_menu = ComponentMenu(self)
 
         ############################################################################################
 
-        self.board = SudokuBoard(self, self.sudoku)
-        self.solve_btn.clicked.connect(self.board.solve_board)
-
-        self.central_layout = QGridLayout(self.central_frame)
+        self.central_layout = QVBoxLayout(self.central_frame)
         self.central_layout.setContentsMargins(0, 0, 0, 0)
         self.central_layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
 
-        self.settings_layout = QGridLayout()
-        self.settings_layout.setContentsMargins(20, 20, 20, 20)
-        self.settings_layout.setSpacing(10)
+        self.board = SudokuBoard(self, self.sudoku)
+        self.solve_btn.clicked.connect(self.board.solve_board)
+        self.clear_btn.clicked.connect(self.board.clear_grid)
+        self.save_btn.clicked.connect(self.sudoku.to_file)
+        self.load_btn.clicked.connect(self.load_sudoku)
 
-        self.components_layout = QGridLayout()
-        self.components_layout.setContentsMargins(20, 20, 20, 20)
-        self.components_layout.setSpacing(10)
-
-        self.central_layout.addWidget(self.title_bar, 0, 0, 1, 1)
+        self.mode_switch.currentIndexChanged.connect(
+            lambda: self.board.setFocus()
+        )
 
         self.content_layout = QGridLayout()
-        self.content_layout.setContentsMargins(20, 20, 20, 20)
+        self.content_layout.setContentsMargins(10, 10, 10, 10)
         self.content_layout.setSpacing(10)
+        self.content_layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
 
-        self.content_layout.addWidget(self.board, 0, 0, 2, 1)
-        self.content_layout.addLayout(self.components_layout, 1, 1, 1, 1)
+        self.settings_layout = QGridLayout()
+        self.settings_layout.setContentsMargins(10, self.board.cell_size, 10, 10)
+        self.settings_layout.setSpacing(10)
+        self.settings_layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
 
-        self.components_layout.addWidget(self.constraints_menu, 0, 0, 1, 1)
-        self.components_layout.addWidget(self.components_menu, 0, 1, 1, 1)
-        self.components_layout.addWidget(self.current_component_label, 1, 0, 1, 1)
+        self.central_layout.addWidget(self.title_bar)
+        self.central_layout.addWidget(self.constraints_menu)
+        self.central_layout.addLayout(self.content_layout)
 
-        self.settings_layout.addWidget(self.mode_switch, 0, 0, 1, 1)
-        self.settings_layout.addWidget(self.solve_btn, 0, 1, 1, 1)
-        self.settings_layout.addWidget(self.highlight_cells_box, 1, 0, 1, 1)
+        self.content_layout.addWidget(self.board, 0, 0, 1, 1)
+        self.content_layout.addLayout(self.settings_layout, 0, 1, 1, 1)
 
-        self.central_layout.addLayout(self.content_layout, 1, 0, 1, 1)
-        self.central_layout.addLayout(self.settings_layout, 2, 0, 1, 1)
+        self.settings_layout.addWidget(self.component_menu, 0, 2, 2, 2)
+        self.settings_layout.addWidget(self.mode_switch, 2, 2, 1, 1)
+        self.settings_layout.addWidget(self.solve_btn, 2, 0, 1, 2)
+        self.settings_layout.addWidget(self.clear_btn, 3, 0, 1, 2)
+        self.settings_layout.addWidget(self.save_btn, 4, 0, 1, 2)
+        self.settings_layout.addWidget(self.load_btn, 4, 2, 1, 2)
+
+        self.settings_layout.addWidget(self.highlight_cells_box, 2, 3, 1, 1)
 
         # Resizing
 
@@ -167,6 +156,13 @@ class SudokuWindow(QMainWindow):
         self.size_grip_top = SizeGrip(self, Qt.TopEdge)
         self.size_grip_right = SizeGrip(self, Qt.RightEdge)
         self.size_grip_bottom = SizeGrip(self, Qt.BottomEdge)
+
+        self.board.setFocus()
+
+    def load_sudoku(self):
+        self.sudoku.from_file()
+        self.constraints_menu.update()
+        self.board.update()
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         self.board.resizeEvent(event)
@@ -203,6 +199,12 @@ class SudokuWindow(QMainWindow):
             self.width() - 2 * self.RESIZE_GRIP_SIZE,
             self.RESIZE_GRIP_SIZE
         )
+
+    def create_new_sudoku(self):
+        self.sudoku = Sudoku.blank()
+        self.board.sudoku = self.sudoku
+        self.constraints_menu.reset()
+        self.update()
 
 
 class SizeGrip(QWidget):
@@ -280,19 +282,19 @@ class SudokuTitleBar(QFrame):
 
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-        self.start_time = datetime.datetime.now()
-
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update_time)
-        self.timer.setInterval(1000)
-        self.timer.start()
-
         # WIDGETS
         # ------------------------------------------------------------------------------------------
 
-        self.title_label = QLabel(self)
-        self.title_label.setObjectName("title_label")
-        self.update_time()
+        self.grid_menu = QMenu(self)
+
+        self.grid_menu_btn = QPushButton("Grid", self)
+        self.grid_menu_btn.setFixedSize(2 * int(button_height * height),
+                                        int(button_height * height))
+
+        self.grid_menu_btn.setMenu(self.grid_menu)
+        self.new_grid = QAction("New Grid")
+        self.new_grid.triggered.connect(self.window.create_new_sudoku)
+        self.grid_menu.addAction(self.new_grid)
 
         self.screenshot_btn = QPushButton(self)
         self.screenshot_btn.setObjectName("screenshot_btn")
@@ -307,6 +309,21 @@ class SudokuTitleBar(QFrame):
         self.minimize_btn.setToolTip("Minimize")
         self.minimize_btn.setIcon(QIcon("icons/minus.svg"))
 
+        self.maximize_btn = QPushButton(self)
+        self.maximize_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self.maximize_btn.setObjectName("maximize_btn")
+        self.maximize_btn.setFixedSize(int(height * button_height), int(height * button_height))
+        self.maximize_btn.setToolTip("Maximize")
+        self.maximize_btn.setIcon(QIcon("icons/maximize.svg"))
+
+        self.restore_btn = QPushButton(self)
+        self.restore_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self.restore_btn.setObjectName("restore_btn")
+        self.restore_btn.setFixedSize(int(height * button_height), int(height * button_height))
+        self.restore_btn.setToolTip("Restore")
+        self.restore_btn.hide()
+        self.restore_btn.setIcon(QIcon("icons/minimize.svg"))
+
         self.exit_btn = QPushButton(self)
         self.exit_btn.setFixedSize(int(button_height * height), int(button_height * height))
         self.exit_btn.setObjectName("exit_btn")
@@ -317,6 +334,8 @@ class SudokuTitleBar(QFrame):
         # ------------------------------------------------------------------------------------------
 
         self.minimize_btn.clicked.connect(self.window.showMinimized)
+        self.maximize_btn.clicked.connect(self.maximize)
+        self.restore_btn.clicked.connect(self.restore)
         self.exit_btn.clicked.connect(self.window.close)
 
         # LAYOUTS
@@ -330,11 +349,29 @@ class SudokuTitleBar(QFrame):
         # FILL LAYOUTS
         # ------------------------------------------------------------------------------------------
 
-        self.layout_.addWidget(self.title_label)
+        self.layout_.addWidget(self.grid_menu_btn)
         self.layout_.addStretch()
         self.layout_.addWidget(self.screenshot_btn)
         self.layout_.addWidget(self.minimize_btn)
+        self.layout_.addWidget(self.maximize_btn)
+        self.layout_.addWidget(self.restore_btn)
         self.layout_.addWidget(self.exit_btn)
+
+    def maximize(self):
+        self.restore_btn.show()
+        self.maximize_btn.hide()
+
+        self.window.showMaximized()
+        self.maximized = True
+
+    def restore(self):
+        self.restore_btn.hide()
+        self.maximize_btn.show()
+
+        self.window.showNormal()
+        self.maximized = False
+
+        self.move_center()
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.buttons() == Qt.LeftButton:
@@ -344,19 +381,20 @@ class SudokuTitleBar(QFrame):
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         self.setCursor(QCursor(Qt.ArrowCursor))
 
-    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
-        if event.buttons() == Qt.LeftButton:
-            self.window.move(0, 0)
-
     def mouseMoveEvent(self, event: QMouseEvent):
         if event.buttons() == Qt.LeftButton:
-            new_pos = self.window.pos() + (event.pos() - self.last_mouse_position)
-            if new_pos.x() < 0:
-                new_pos.setX(0)
-            if new_pos.y() < 0:
-                new_pos.setY(0)
+            if self.maximized:
+                self.restore()
 
-            self.window.move(new_pos)
+            self.window.move(self.window.pos() + (
+                event.pos() - self.last_mouse_position))
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent):
+        if event.buttons() == Qt.LeftButton:
+            if self.maximized:
+                self.restore()
+            else:
+                self.maximize()
 
     def take_screenshot(self):
         import datetime
@@ -371,3 +409,13 @@ class SudokuTitleBar(QFrame):
         seconds = f"{delta.seconds % 60}" if delta.seconds >= 10 else f"0{delta.seconds % 60}"
 
         self.title_label.setText(f"{minutes}:{seconds}")
+
+    def move_center(self):
+
+        geom = QApplication.primaryScreen().geometry()
+        space_h = geom.width() - 1280
+        space_v = geom.height() - 900
+
+        self.window.setGeometry(
+            space_h // 2, 10, 1280, 900
+        )
