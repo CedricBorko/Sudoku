@@ -7,9 +7,10 @@ from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QFrame, QHBoxLayout, QPu
 
 from board import SudokuBoard
 from components.cell_constraint import EvenDigit, OddDigit
-from components.region_constraints import Sandwich
+from components.outside_components import Sandwich
 from menus import ConstraintsMenu, ComponentMenu
 from sudoku import Sudoku
+from utils import monitor_size
 
 
 class SudokuWindow(QMainWindow):
@@ -71,12 +72,12 @@ class SudokuWindow(QMainWindow):
 
         self.solve_btn = QPushButton("Solve")
         self.solve_btn.setFixedHeight(40)
-        self.solve_btn.setMinimumWidth(200)
+        self.solve_btn.setMinimumWidth(150)
         self.solve_btn.setCursor(QCursor(Qt.PointingHandCursor))
 
         self.clear_btn = QPushButton("Clear Grid")
         self.clear_btn.setFixedHeight(40)
-        self.clear_btn.setMinimumWidth(200)
+        self.clear_btn.setMinimumWidth(150)
         self.clear_btn.setCursor(QCursor(Qt.PointingHandCursor))
 
         self.save_btn = QPushButton("Save Grid")
@@ -86,7 +87,7 @@ class SudokuWindow(QMainWindow):
 
         self.load_btn = QPushButton("Load Grid")
         self.load_btn.setFixedHeight(40)
-        self.load_btn.setMinimumWidth(200)
+        self.load_btn.setMinimumWidth(150)
         self.load_btn.setCursor(QCursor(Qt.PointingHandCursor))
 
         self.highlight_cells_box = QCheckBox("Highlight Cells seen from selection", self)
@@ -387,7 +388,7 @@ class SudokuTitleBar(QFrame):
                 self.restore()
 
             self.window.move(self.window.pos() + (
-                event.pos() - self.last_mouse_position))
+                    event.pos() - self.last_mouse_position))
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
         if event.buttons() == Qt.LeftButton:
@@ -411,11 +412,14 @@ class SudokuTitleBar(QFrame):
         self.title_label.setText(f"{minutes}:{seconds}")
 
     def move_center(self):
-
-        geom = QApplication.primaryScreen().geometry()
-        space_h = geom.width() - 1280
-        space_v = geom.height() - 900
+        width, height = monitor_size()
+        screen = QApplication.primaryScreen()
 
         self.window.setGeometry(
-            space_h // 2, 10, 1280, 900
+            screen.geometry().width() // 2 - screen.geometry().width() // 2,
+            screen.geometry().height() // 2 - screen.geometry().height() // 2,
+            screen.geometry().width() // 2, screen.geometry().height() // 2
         )
+
+        # surface: 2736 x 1824
+

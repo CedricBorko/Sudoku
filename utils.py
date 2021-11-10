@@ -1,9 +1,11 @@
 import itertools
+import math
 import os
 import threading
 from typing import Tuple, T
 
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QPoint
+from PySide6.QtGui import QColor, QPainter
 
 
 def n_digit_sums(amount: int, target: int,
@@ -43,6 +45,18 @@ class StoppableThread(threading.Thread):
         return self._stop_event.is_set()
 
 
+import ctypes
+
+
+def monitor_size():
+    try:
+        system = ctypes.windll.user32
+        return system.GetSystemMetrics(0), system.GetSystemMetrics(1)
+    except EnvironmentError:
+        print("Only possible for Windows")
+        return 1, 1
+
+
 def uniquify(path):
     filename, extension = os.path.splitext(path)
     counter = 1
@@ -75,3 +89,10 @@ class SmartList(list):
 
     def only(self, __object: T) -> bool:
         return len(self) == 1 and __object in self
+
+
+def distance(p1: QPoint, p2: QPoint) -> float:
+    return math.sqrt((p2.x() - p1.x()) ** 2 + (p2.y() - p1.y()) ** 2)
+
+
+

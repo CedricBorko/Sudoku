@@ -472,6 +472,8 @@ class Sudoku:
 
         self.cell_components = []
         self.region_components = SmartList()
+        self.outside_components = SmartList()
+
 
         self.brute_force_time = 20
 
@@ -508,7 +510,8 @@ class Sudoku:
                 "border": [cmp.to_json() for cmp in self.border_constraints],
                 "cages": [cage.to_json() for cage in self.cages],
                 "cells": [cell_cmp.to_json() for cell_cmp in self.cell_components],
-                "regions": [region_cmp.to_json() for region_cmp in self.region_components]
+                "regions": [region_cmp.to_json() for region_cmp in self.region_components],
+                "outside": [outside_cmp.to_json() for outside_cmp in self.outside_components]
             }
 
         }
@@ -519,7 +522,7 @@ class Sudoku:
     def from_file(self):
         import json
 
-        from components import border_constraints, cell_constraint, region_constraints
+        from components import border_constraints, cell_constraint, region_constraints, outside_components
 
         path, extension = QFileDialog.getOpenFileName(dir=os.getcwd(), filter="(*.json)")
 
@@ -574,12 +577,12 @@ class Sudoku:
                         obj = cell_constraint.OddDigit(self, item["index"])
                         self.cell_components.append(obj)
 
-            for item in data["components"]["regions"]:
+            for item in data["components"]["outside"]:
                 match item["type"]:
                     case "Sandwich":
-                        obj = region_constraints.Sandwich(self, item["col"], item["row"],
+                        obj = outside_components.Sandwich(self, item["col"], item["row"],
                                                           item["total"])
-                        self.region_components.append(obj)
+                        self.outside_components.append(obj)
 
     @classmethod
     def from_string(cls, board_str: str):

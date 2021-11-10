@@ -9,7 +9,8 @@ from PySide6.QtWidgets import QCheckBox, QFrame, QVBoxLayout, QPushButton, \
 from components.border_constraints import XVSum, LessGreater, Quadruple, BorderComponent, Ratio, \
     Difference
 from components.line_constraints import LineComponent
-from components.region_constraints import RegionComponent, Sandwich
+from components.region_constraints import RegionComponent
+from components.outside_components import Sandwich, XSumsClue, LittleKiller, OutsideComponent
 from utils import SmartList
 
 
@@ -21,7 +22,7 @@ class ComponentMenu(QFrame):
         self.sudoku = parent.sudoku
 
         self.toggle_btn = QPushButton("Toggle Components")
-        self.toggle_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.toggle_btn.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         self.toggle_btn.setFixedHeight(40)
         self.toggle_btn.clicked.connect(self.toggle_buttons)
 
@@ -46,7 +47,9 @@ class ComponentMenu(QFrame):
         self.add_button(ComponentButton(self, XVSum(self.sudoku, [])))
         self.add_button(ComponentButton(self, Quadruple(self.sudoku, [], SmartList(max_length=4))))
         self.add_button(ComponentButton(self, LessGreater(self.sudoku, [])))
-        self.add_button(ComponentButton(self, Sandwich(self.sudoku, col=0, row=0, total=0)))
+        self.add_button(ComponentButton(self, Sandwich(self.sudoku, col=0, row=1, total=0)))
+        self.add_button(ComponentButton(self, XSumsClue(self.sudoku, col=0, row=1, total=0)))
+        self.add_button(ComponentButton(self, LittleKiller(self.sudoku, col=10, row=1, total=0, direction=LittleKiller.TOP_LEFT)))
 
 
     def toggle_buttons(self):
@@ -58,7 +61,7 @@ class ComponentMenu(QFrame):
         self.component_group.addButton(button)
         self.layout_.addWidget(button)
 
-    def set_component(self, component: BorderComponent | LineComponent | RegionComponent):
+    def set_component(self, component: BorderComponent | LineComponent | RegionComponent | OutsideComponent):
         self.window_.board.making_quadruple = isinstance(component, Quadruple)
         self.window_.board.current_component = copy.copy(component)
         self.window_.board.selected.clear()
@@ -70,16 +73,15 @@ class ComponentMenu(QFrame):
 
 class ComponentButton(QPushButton):
     def __init__(
-        self,
-        parent: ComponentMenu,
-        component: BorderComponent | LineComponent | RegionComponent
+            self,
+            parent: ComponentMenu,
+            component: BorderComponent | LineComponent | RegionComponent | OutsideComponent
     ):
         super().__init__(parent)
 
         self.menu = parent
         self.sudoku = parent.sudoku
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.setMinimumWidth(200)
 
         self.setFixedHeight(40)
 
@@ -160,7 +162,6 @@ class ConstraintCheckBox(QCheckBox):
         self.setCheckable(True)
 
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.setMinimumWidth(200)
         self.setFixedHeight(40)
 
         self.frame = frame

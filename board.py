@@ -3,17 +3,18 @@ from __future__ import annotations
 import copy
 from typing import List
 
-from PySide6.QtCore import QRect, Qt
+from PySide6.QtCore import QRect, Qt, QPoint
 from PySide6.QtGui import QPaintEvent, QPainter, QPen, QColor, QMouseEvent, QFont, \
     QKeyEvent, QBrush
 from PySide6.QtWidgets import QWidget
 
 from components.border_constraints import XVSum, Quadruple, BorderComponent, Difference, Ratio, \
     LessGreater
-from components.line_constraints import Thermometer
-from components.region_constraints import Sandwich, RegionComponent, Cage
+from components.outside_components import Sandwich, XSumsClue, LittleKiller, OutsideComponent
+from components.region_constraints import RegionComponent, Cage
 from sudoku import Sudoku
 from sudoku import tile_to_poly
+
 
 NORTH = 0
 EAST = 1
@@ -89,6 +90,7 @@ class SudokuBoard(QWidget):
 
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
+
         painter.setRenderHint(QPainter.Antialiasing)
         painter.drawRect(self.rect())
 
@@ -157,6 +159,9 @@ class SudokuBoard(QWidget):
 
         for region_cmp in self.sudoku.region_components:
             region_cmp.draw(painter, self.cell_size)
+
+        for outside_cmp in self.sudoku.outside_components:
+            outside_cmp.draw(painter, self.cell_size)
 
         painter.setBrush(Qt.NoBrush)
 
@@ -281,13 +286,15 @@ class SudokuBoard(QWidget):
         col_s = event.x() // self.cell_size
         row_s = event.y() // self.cell_size
 
-        if (isinstance(self.current_component, RegionComponent)
-            and (col_s in (0, 10) and 1 <= row_s <= 9) or (row_s in (0, 10) and 1 <= col_s <= 9)
+        if (isinstance(self.current_component, OutsideComponent)
+                and (col_s in (0, 10) and 1 <= row_s <= 9) or (row_s in (0, 10) and 1 <= col_s <= 9)
+                or isinstance(self.current_component, LittleKiller)
+                and ((col_s in (0, 10) and 0 <= row_s <= 10) or (row_s in (0, 10) and 0 <= col_s <= 10))
         ):
 
             if event.modifiers() == Qt.ShiftModifier:
-                cmps = [cmp for cmp in self.sudoku.region_components if
-                        isinstance(cmp, Sandwich) and (cmp.row, cmp.col) == (row_s, col_s)]
+                cmps = [cmp for cmp in self.sudoku.outside_components if
+                        isinstance(cmp, OutsideComponent) and (cmp.row, cmp.col) == (row_s, col_s)]
 
                 if cmps:
                     self.selected_component = cmps[0]
@@ -295,15 +302,20 @@ class SudokuBoard(QWidget):
                     self.update()
                     return
             else:
+
+                # IF LITTLER KILLER GET POSITION IN CELL CLICKED
                 self.current_component.col = col_s
                 self.current_component.row = row_s
 
-                self.sudoku.region_components.append(self.current_component)
+                if isinstance(self.current_component, LittleKiller):
+                    self.current_component.get_direction(event.pos(), self.cell_size)
+
+                self.sudoku.outside_components.append(self.current_component)
 
                 opp = self.current_component.opposite()
 
-                if opp is not None and opp in self.sudoku.region_components:
-                    self.sudoku.region_components.remove(opp)
+                if opp is not None and opp in self.sudoku.outside_components:
+                    self.sudoku.outside_components.remove(opp)
 
                 self.selected_component = self.current_component
 
@@ -312,12 +324,13 @@ class SudokuBoard(QWidget):
 
                 self.update()
 
+
         if row < 0 or row > 8 or col < 0 or col > 8:
             return
 
         if event.buttons() == Qt.LeftButton:  # Add stuff
 
-            selected_border = self.get_border(x, y, location)
+            selected_border = self.get_component_indices(x, y, location)
 
             if event.modifiers() == Qt.ShiftModifier:
 
@@ -377,13 +390,15 @@ class SudokuBoard(QWidget):
         new_location = y * 9 + x
 
         not_on_border = (
-            10 <= cell_x <= self.cell_size - 10 and 10 <= cell_y <= self.cell_size - 10)
+                10 <= cell_x <= self.cell_size - 10 and 10 <= cell_y <= self.cell_size - 10)
 
         if event.buttons() == Qt.LeftButton and self.border_component is None and not_on_border:
             self.selected.add(new_location)
 
         elif event.buttons() == Qt.RightButton and new_location in self.selected:
             self.selected.remove(new_location)
+
+        self.update()
 
         """if self.cell_component is not None and not_on_border:
 
@@ -460,7 +475,7 @@ class SudokuBoard(QWidget):
             self.window_.component_menu.uncheck()
 
         if key == Qt.Key_Backspace:
-            if isinstance(self.selected_component, Sandwich | Cage):
+            if isinstance(self.selected_component, Sandwich | Cage | LittleKiller | XSumsClue):
                 self.selected_component.reduce_total()
                 self.update()
                 return
@@ -484,7 +499,7 @@ class SudokuBoard(QWidget):
 
         if key == Qt.Key_0:
 
-            if isinstance(self.selected_component, Sandwich):
+            if isinstance(self.selected_component, Sandwich | Cage | LittleKiller | XSumsClue):
                 self.selected_component.increase_total(0)
                 self.update()
                 return
@@ -498,7 +513,7 @@ class SudokuBoard(QWidget):
                     self.selected_component.set_value(val)
                     self.update()
                     return
-                elif isinstance(self.selected_component, Sandwich):
+                elif isinstance(self.selected_component, Sandwich | Cage | LittleKiller | XSumsClue):
                     self.selected_component.increase_total(val)
                     self.update()
                     return
@@ -578,10 +593,17 @@ class SudokuBoard(QWidget):
 
         self.update()
 
-    def get_border(self, x: int, y: int, location: int):
+    def get_component_indices(self, x: int, y: int, cell_index: int) -> List[int]:
+        """
 
-        col, row = location % 9, location // 9
-        threshhold = self.cell_size // 3
+        @param x: Mouse Click X
+        @param y: Mouse Click Y
+        @param cell_index: Index of clicked Cell
+        @return: List of indices that correspond tho the cells that share a clicked border
+        """
+
+        col, row = cell_index % 9, cell_index // 9
+        threshhold = self.cell_size // 3  # How far from a border can you click to select it
 
         if self.making_quadruple:
 
@@ -589,41 +611,41 @@ class SudokuBoard(QWidget):
                 # TOP_LEFT
 
                 if row > 1 and col > 0:
-                    return [location - 10, location - 9, location - 1, location]
+                    return [cell_index - 10, cell_index - 9, cell_index - 1, cell_index]
 
             if x % self.cell_size >= self.cell_size - threshhold and y % self.cell_size <= threshhold:
                 # TOP_RIGHT
                 if row > 1 and col < 8:
-                    return [location - 9, location - 8, location, location + 1, ]
+                    return [cell_index - 9, cell_index - 8, cell_index, cell_index + 1, ]
 
             if x % self.cell_size <= threshhold \
-                and y % self.cell_size >= self.cell_size - threshhold:
+                    and y % self.cell_size >= self.cell_size - threshhold:
                 # BOTTOM_LEFT
 
                 if row < 8 and col > 0:
-                    return [location - 1, location, location + 9, location + 8]
+                    return [cell_index - 1, cell_index, cell_index + 9, cell_index + 8]
 
             if (x % self.cell_size >= self.cell_size - threshhold
-                and y % self.cell_size >= self.cell_size - threshhold):
+                    and y % self.cell_size >= self.cell_size - threshhold):
                 # BOTTOM_RIGHT
                 if row < 8 and col < 8:
-                    return [location, location + 1, location + 9, location + 10]
+                    return [cell_index, cell_index + 1, cell_index + 9, cell_index + 10]
 
             return None
 
         else:
 
             if x % self.cell_size <= 10 and col > 0:
-                return [location - 1, location]
+                return [cell_index - 1, cell_index]
 
-            elif x % self.cell_size >= self.cell_size - 10 and col < 9:
-                return [location, location + 1]
+            elif x % self.cell_size >= self.cell_size - 10 and col < 8:
+                return [cell_index, cell_index + 1]
 
             elif y % self.cell_size <= 10 and row > 0:
-                return [location - 9, location]
+                return [cell_index - 9, cell_index]
 
-            elif y % self.cell_size >= self.cell_size - 10 and row < 9:
-                return [location, location + 9]
+            elif y % self.cell_size >= self.cell_size - 10 and row < 8:
+                return [cell_index, cell_index + 9]
 
             else:
                 return None
