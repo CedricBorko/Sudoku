@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from abc import ABC
-from typing import List
+import math
+from abc import ABC, abstractmethod
+from typing import List, Dict
 
 from PySide6.QtCore import QPoint, QRect
 from PySide6.QtGui import QPainter, QBrush, QColor, QPen, QFont, Qt
@@ -11,22 +12,53 @@ from utils import SmartList
 
 
 class Component(ABC):
+
     def __init__(self, sudoku: "Sudoku", indices: List[int]):
         self.sudoku = sudoku
         self.indices = indices
 
-    @property
-    def cells(self):
-        return [self.sudoku.board[i] for i in self.indices]
+    def __repr__(self):
+        return f"{self.__class__.__name__}()"
 
-    def valid(self, index: int, number: int):
+    def setup(self):
         pass
 
-    def draw(self, painter: QPainter, cell_size: int):
+    @property
+    def cells(self) -> List[Cell]:
+        return [self.sudoku.board[i] for i in self.indices]
+
+    @property
+    def first(self) -> Cell:
+        return self.cells[0]
+
+    @property
+    def last(self) -> Cell:
+        return self.cells[-1]
+
+    @property
+    def second(self) -> Cell:
+        return self.cells[1]
+
+    def valid(self, index: int, number: int) -> bool:
+        """
+
+        :param index: Cell index in Sudoku Grid
+        :param number: Number to test at that index
+        :return: Number can be put at that position
+        """
+        pass
+
+    def draw(self, painter: QPainter, cell_size: int) -> None:
+        pass
+
+    @abstractmethod
+    def to_json(self) -> Dict:
         pass
 
 
 class BorderComponent(Component):
+    """A Component in the Grid that lies on a border between 2 or 4 (Quadruple) Cells"""
+
     def __init__(self, sudoku: Sudoku, indices: List[int]):
         super().__init__(sudoku, indices)
 
@@ -38,47 +70,38 @@ class BorderComponent(Component):
     def __lt__(self, other):
         return min(self.indices) < min(other.indices)
 
-    def other_cell(self, index: int):
+    def to_json(self) -> Dict:
+        pass
+
+    def get(self, selected_indices: List[int]) -> BorderComponent:
+
+        for cmp in self.sudoku.border_components:
+            if sorted(cmp.indices) == sorted(selected_indices):
+                return cmp
+
+    def other_cell(self, index: int) -> Cell:
+        """
+
+        :param index: Index of the Cell looked at
+        :return: The Cell that is on the other index
+        E.g. Index corresponds to Left Cell in a XVSum Component -> Return Right Cell
+        """
+
         return self.cells[0] if self.cells[0].index != index else self.cells[1]
 
     def pos(self, index: int) -> int:
         return self.indices.index(index)
-
-    def deep_compare(self, other) -> bool:
-        pass
-
-    def create(self, indices: List[int]):
-        self.indices = indices
-
-        replace = False
-
-        for border_constraint in self.sudoku.border_constraints:
-            if border_constraint == self:
-
-                self.sudoku.border_constraints.remove(border_constraint)
-                replace = True
-
-                if not self.deep_compare(border_constraint):
-                    self.sudoku.border_constraints.append(self)
-                break
-
-        if not replace:
-            self.sudoku.border_constraints.append(self)
-
-    @property
-    def first(self):
-        return self.cells[0]
-
-    @property
-    def second(self):
-        return self.cells[1]
 
     def clear(self):
         self.indices = []
 
 
 class Difference(BorderComponent):
+    """ Signals the Difference between the involved Cells"""
+
     NAME = "Difference"
+    RULE = ("Cells separated by a white dot have a difference of the number inside it. "
+            "If no number is given the difference is 1.")
 
     def __init__(self, sudoku: "Sudoku", indices: List[int], difference: int = 1):
         super().__init__(sudoku, indices)
@@ -91,50 +114,54 @@ class Difference(BorderComponent):
     def __repr__(self):
         return f"Difference of {self.difference} between {self.first} and {self.second}"
 
-    def to_json(self):
+    def to_json(self) -> Dict:
         return {
             "type": self.__class__.__name__,
             "indices": self.indices,
             "difference": self.difference
         }
 
-    def set_value(self, number: int):
+    def set_value(self, number: int) -> None:
         if 1 <= number <= 8:
             self.difference = number
 
     def valid(self, index: int, number: int):
-        if self.first.value != 0:
-            return self.first.value - self.difference == number or self.first.value + self.difference == number
+        """
+        Return True if the difference between the 2 Cells is equal to the difference attribute
+        """
 
-        if self.second.value != 0:
-            return self.second.value - self.difference == number or self.second.value + self.difference == number
+        if number - self.difference < 1 and number + self.difference > 9:
+            # No Possible match in range 1 to 9
+            return False
 
-        return True
+        if self.other_cell(index).value == 0:
+            # No restriction
+            return True
 
-    def draw(self, painter: QPainter, cell_size: int):
+        else:
+            return math.fabs(number - self.other_cell(index).value) == self.difference
+
+    def draw(self, painter: QPainter, cell_size: int) -> None:
         painter.setBrush(QBrush(QColor(255, 255, 255)))
-        painter.setPen(QPen(QColor(0, 0, 0), 1.0))
+        painter.setPen(QPen(QColor(50, 50, 50), 2.0))
 
-        c1 = self.first
-        c2 = self.second
-
-        if c1.column == c2.column:  # Vertical
+        if self.first.column == self.second.column:  # Vertical
             center = QPoint(
-                cell_size + c2.column * cell_size + cell_size // 2,
-                cell_size + c2.row * cell_size
+                cell_size + self.second.column * cell_size + cell_size // 2,
+                cell_size + self.second.row * cell_size
             )
 
         else:  # Horizontal
             center = QPoint(
-                cell_size + max(c1.column, c2.column) * cell_size,
-                cell_size + c1.row * cell_size + cell_size // 2
+                cell_size + max(self.first.column, self.second.column) * cell_size,
+                cell_size + self.first.row * cell_size + cell_size // 2
             )
 
-        size = cell_size // 6
+        size = cell_size // 7
         painter.drawEllipse(center, size, size)
 
         if self.difference != 1:
-            painter.setFont(QFont("Varela Round", 10, QFont.Bold))
+            painter.setFont(QFont("Asap", cell_size // 6, QFont.Bold))
             painter.drawText(
                 QRect(center.x() - size // 2, center.y() - size // 2, size, size),
                 Qt.AlignHCenter | Qt.AlignVCenter,
@@ -143,6 +170,8 @@ class Difference(BorderComponent):
 
 
 class Ratio(BorderComponent):
+    """ Signals the Ratio between the involved Cells"""
+
     # Valid numbers for all ratios
     VALID = {
         2: (1, 2, 3, 4, 6, 8),
@@ -156,6 +185,8 @@ class Ratio(BorderComponent):
     }
 
     NAME = "Ratio"
+    RULE = ("Cells separated by a black dot have a ratio of the number inside it. "
+            "If no number is given the ratio is 2.")
 
     def __init__(self, sudoku: "Sudoku", indices: List[int], ratio: int = 2):
         super().__init__(sudoku, indices)
@@ -168,7 +199,7 @@ class Ratio(BorderComponent):
         if 2 <= number <= 9:
             self.ratio = number
 
-    def to_json(self):
+    def to_json(self) -> Dict:
         return {
             "type": self.__class__.__name__,
             "indices": self.indices,
@@ -178,59 +209,63 @@ class Ratio(BorderComponent):
     def __repr__(self):
         return f"Ratio of {self.ratio} : {1} between {self.first} and {self.second}"
 
-    def valid(self, index: int, number: int):
-        if self.first.value != 0:
-            return self.first.value / self.ratio == number or self.first.value * self.ratio == number
-
-        if self.second.value != 0:
-            return self.second.value / self.ratio == number or self.second.value * self.ratio == number
+    def valid(self, index: int, number: int) -> bool:
 
         if number not in self.VALID[self.ratio]:
+            # No Possible match in range 1 to 9
             return False
 
-        return True
+        if self.other_cell(index).value == 0:
+            # No restriction
+            return True
+
+        return (number == self.other_cell(index).value / self.ratio
+                or number == self.other_cell(index).value * self.ratio)
 
     def draw(self, painter: QPainter, cell_size: int):
         painter.setBrush(QBrush(QColor(0, 0, 0)))
         painter.setPen(QPen(QColor(0, 0, 0), 2.0))
 
-        c1 = self.first
-        c2 = self.second
-
-        if c1.column == c2.column:  # Vertical
+        if self.first.column == self.second.column:  # Vertical
             center = QPoint(
-                cell_size + c2.column * cell_size + cell_size // 2,
-                cell_size + c2.row * cell_size
+                cell_size + self.second.column * cell_size + cell_size // 2,
+                cell_size + self.second.row * cell_size
             )
 
         else:  # Horizontal
             center = QPoint(
-                cell_size + c2.column * cell_size,
-                cell_size + c1.row * cell_size + cell_size // 2
+                cell_size + self.second.column * cell_size,
+                cell_size + self.first.row * cell_size + cell_size // 2
             )
 
-        size = cell_size // 6
+        size = cell_size // 7
         painter.drawEllipse(center, size, size)
 
         painter.setPen(QPen(QColor(255, 255, 255)))
         if self.ratio != 2:
-            painter.setFont(QFont("Varela Round", 10, QFont.Bold))
+            painter.setFont(QFont("Asap", cell_size // 6, QFont.Bold))
             painter.drawText(
                 QRect(center.x() - size // 2, center.y() - size // 2, size, size),
-                Qt.AlignHCenter | Qt.AlignVCenter,
-                str(self.ratio)
+                str(self.ratio),
+                Qt.AlignHCenter | Qt.AlignVCenter
+
             )
 
 
 class XVSum(BorderComponent):
+    """Signals that the Sum of the involved Cells is 5, 10 or 15"""
+
     NAME = "XV Sum"
+    RULE = ("Cells separated by a V sum to 5. "
+            "Cells separated by an X sum to 10. "
+            "Cells separated by an XV sum to 15.")
 
     def __init__(self, sudoku: "Sudoku", indices: List[int], total: int = 5):
         super().__init__(sudoku, indices)
 
         self.total = total
 
-    def to_json(self):
+    def to_json(self) -> Dict:
         return {
             "type": self.__class__.__name__,
             "indices": self.indices,
@@ -240,42 +275,38 @@ class XVSum(BorderComponent):
     def set_value(self, v_pressed: bool, x_pressed: bool):
         if v_pressed and x_pressed:
             self.total = 15
+
         elif v_pressed:
             self.total = 5
+
         elif x_pressed:
             self.total = 10
 
-    def deep_compare(self, other) -> bool:
-        if isinstance(other, XVSum):
-            return self.total == other.total
-        return False
-
     def valid(self, index: int, number: int) -> bool:
 
-        if number >= self.total:
-            return False
-
-        if self.other_cell(index).value != 0 and self.other_cell(
-            index).value + number != self.total:
-            return False
-
-        if self.other_cell(index).value == 0 and self.other_cell(index).valid_numbers:
-            if self.total - number not in self.other_cell(index).valid_numbers:
-                return False
-
         if number == 5:
+            # 5 Cannot be in 5, 10 or 15 Two Cell sums
             return False
 
         if self.total == 15 and number < 6:
+            # 15 Can only be made with 6, 7, 8 and 9
             return False
+
+        if number > self.total:
+            #  Too big :)
+            return False
+
+        other = self.other_cell(index)
+
+        if (val := other.value) != 0:
+            return val + number == self.total
 
         return True
 
     def draw(self, painter: QPainter, cell_size: int):
-
         c1 = self.cells[0]
         c2 = self.cells[1]
-        rect_size = cell_size // 3
+        rect_size = cell_size // 4
         painter.setPen(Qt.NoPen)
         painter.setBrush(QBrush(QColor(255, 255, 255)))
 
@@ -312,8 +343,7 @@ class XVSum(BorderComponent):
                 rect_size
             )
 
-        painter.setFont(QFont("Verdana", 14 if self.total != 15 else 12, QFont.Bold))
-
+        painter.setFont(QFont("Asap", cell_size // 4 if self.total != 15 else cell_size // 7, QFont.Bold))
         painter.setPen(QPen(QColor(0, 0, 0), 1.0))
 
         text = "V" if self.total == 5 else "X" if self.total == 10 else "XV"
@@ -323,6 +353,8 @@ class XVSum(BorderComponent):
 
 class LessGreater(BorderComponent):
     NAME = "Less or Greater"
+
+    RULE = "The inequality sign points to the smaller number at the edge."
 
     def __init__(self, sudoku: "Sudoku", indices: List[int], less: bool = True):
         super().__init__(sudoku, indices)
@@ -341,11 +373,6 @@ class LessGreater(BorderComponent):
 
     def invert(self):
         self.less = not self.less
-
-    def deep_compare(self, other) -> bool:
-        if isinstance(other, LessGreater):
-            return self.less == other.less
-        return False
 
     def valid(self, index: int, number: int):
 
@@ -376,73 +403,90 @@ class LessGreater(BorderComponent):
         c1 = self.cells[0]
         c2 = self.cells[1]
 
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor(255, 255, 255)))
+
+        border_center = QPoint(
+            cell_size + cell_size * c2.column + (cell_size // 2 if c1.column == c2.column else 0),
+            cell_size + cell_size * c2.row + (cell_size // 2 if c1.row == c2.row else 0)
+        )
+
+        painter.drawEllipse(border_center, cell_size // 4, cell_size // 4)
         pen = QPen(QColor(100, 100, 100), 4.0)
         pen.setCapStyle(Qt.RoundCap)
         painter.setPen(pen)
 
+        size = cell_size // 4
+
         if c1.column == c2.column:  # ABOVE EACH OTHER
-            if self.less:
+
+            if self.less:  # POINTING UP
+
+
                 painter.drawLine(
-                    cell_size + cell_size * c2.column + cell_size // 2,
-                    cell_size + cell_size * c2.row - cell_size // 6,
-                    cell_size + cell_size * c2.column + cell_size // 2 - cell_size // 4,
-                    cell_size + cell_size * c2.row + cell_size // 6,
+                    border_center.x(),
+                    border_center.y() - size // 2,
+                    border_center.x() - size // 2,
+                    border_center.y() + cell_size // 6,
                 )
 
                 painter.drawLine(
-                    cell_size + cell_size * c2.column + cell_size // 2,
-                    cell_size + cell_size * c2.row - cell_size // 6,
-                    cell_size + cell_size * c2.column + cell_size // 2 + cell_size // 4,
-                    cell_size + cell_size * c2.row + cell_size // 6,
+                    border_center.x(),
+                    border_center.y() - size // 2,
+                    border_center.x() + size // 2,
+                    border_center.y() + cell_size // 6,
                 )
-            else:
+            else:  # POINTING DOWN
                 painter.drawLine(
-                    cell_size + cell_size * c2.column + cell_size // 2,
-                    cell_size + cell_size * c2.row + cell_size // 6,
-                    cell_size + cell_size * c2.column + cell_size // 2 - cell_size // 4,
-                    cell_size + cell_size * c2.row - cell_size // 6,
+                    border_center.x(),
+                    border_center.y() + size // 2,
+                    border_center.x() - size // 2,
+                    border_center.y() - cell_size // 6,
                 )
 
                 painter.drawLine(
-                    cell_size + cell_size * c2.column + cell_size // 2,
-                    cell_size + cell_size * c2.row + cell_size // 6,
-                    cell_size + cell_size * c2.column + cell_size // 2 + cell_size // 4,
-                    cell_size + cell_size * c2.row - cell_size // 6,
+                    border_center.x(),
+                    border_center.y() + size // 2,
+                    border_center.x() + size // 2,
+                    border_center.y() - cell_size // 6,
                 )
         else:
-            if self.less:
+
+            if self.less:  # POINTING LEFT
                 painter.drawLine(
-                    cell_size + cell_size * c2.column - cell_size // 6,
-                    cell_size + cell_size * c2.row + cell_size // 2,
-                    cell_size + cell_size * c2.column + cell_size // 6,
-                    cell_size + cell_size * c2.row + cell_size // 2 - cell_size // 4,
+                    border_center.x() - cell_size // 6,
+                    border_center.y(),
+                    border_center.x() + size // 2,
+                    border_center.y() - size // 2,
                 )
 
                 painter.drawLine(
-                    cell_size + cell_size * c2.column - cell_size // 6,
-                    cell_size + cell_size * c2.row + cell_size // 2,
-                    cell_size + cell_size * c2.column + cell_size // 6,
-                    cell_size + cell_size * c2.row + cell_size // 2 + cell_size // 4,
+                    border_center.x() - cell_size // 6,
+                    border_center.y(),
+                    border_center.x() + size // 2,
+                    border_center.y() + size // 2,
                 )
-            # BOTTOM LESS THAN TOP
-            else:
+
+            else:  # POINTING RIGHT
                 painter.drawLine(
-                    cell_size + cell_size * c2.column - cell_size // 6,
-                    cell_size + cell_size * c2.row + cell_size // 4,
-                    cell_size + cell_size * c2.column + cell_size // 6,
-                    cell_size + cell_size * c2.row + cell_size // 2,
+                    border_center.x() + cell_size // 6,
+                    border_center.y(),
+                    border_center.x() - size // 2,
+                    border_center.y() - size // 2,
                 )
 
                 painter.drawLine(
-                    cell_size + cell_size * c2.column + cell_size // 6,
-                    cell_size + cell_size * c2.row + cell_size // 2,
-                    cell_size + cell_size * c2.column - cell_size // 6,
-                    cell_size + cell_size * c2.row + cell_size // 2 + cell_size // 5,
+                    border_center.x() + cell_size // 6,
+                    border_center.y(),
+                    border_center.x() - size // 2,
+                    border_center.y() + size // 2,
                 )
 
 
 class Quadruple(BorderComponent):
     NAME = "Quadruple"
+
+    RULE = "All numbers in the large white circle must appear at least once in the four surrounding cells."
 
     def __init__(self, sudoku: "Sudoku", indices: List[int], numbers: SmartList[int]):
         super().__init__(sudoku, indices)
@@ -457,18 +501,19 @@ class Quadruple(BorderComponent):
             "numbers": self.numbers
         }
 
+    def __repr__(self):
+        return f"{self.indices} - {self.numbers}"
+
     def set_value(self, number):
         self.numbers.append(number)
 
+    def setup(self, selected: List[int]):
+        self.indices = selected
+        self.numbers = SmartList([], max_length=4)
+
     def clear(self):
-        super(Quadruple, self).clear()
-        self.numbers = SmartList(max_length=4)
-
-    def deep_compare(self, other) -> bool:
-        if isinstance(other, Quadruple):
-            return sorted(self.numbers) == sorted(other.numbers)
-
-        return False
+        self.indices = []
+        self.numbers = SmartList([], max_length=4)
 
     def empties(self) -> List[Cell]:
         return [cell for cell in self.cells if cell.value == 0]
@@ -489,7 +534,7 @@ class Quadruple(BorderComponent):
 
         border_intersection = self.get_intersection()
         painter.setBrush(QBrush(QColor(255, 255, 255)))
-        painter.setPen(QPen(QColor(0, 0, 0) if not self.selected else QColor("#eb902f"), 2.0))
+        painter.setPen(QPen(QColor(0, 0, 0) if not self.selected else QColor("#eb902f"), 3.0))
 
         size = cell_size // 3
 
@@ -502,7 +547,7 @@ class Quadruple(BorderComponent):
         )
 
         painter.setPen(QPen(QColor(0, 0, 0), 2.0))
-        painter.setFont(QFont("Verdana", 10, QFont.Bold))
+        painter.setFont(QFont("Asap", cell_size // 6, QFont.Bold))
         painter.drawText(
             QRect(
                 cell_size + border_intersection[0] * cell_size - cell_size // 3,
@@ -524,6 +569,3 @@ class Quadruple(BorderComponent):
 
     def get_intersection(self):
         return max([c.column for c in self.cells]), max([c.row for c in self.cells])
-
-    def create(self, indices: List[int]):
-        super(Quadruple, self).create(indices)

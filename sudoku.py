@@ -10,7 +10,7 @@ from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtGui import QPainter, QPolygon, QColor
 from PySide6.QtWidgets import QFileDialog
 
-from utils import StoppableThread, SmartList, uniquify
+from utils import StoppableThread, SmartList
 
 NORTH = 0
 EAST = 1
@@ -22,10 +22,10 @@ class Cell:
     def __init__(self, index: int, value: int = 0):
         self.index = index
 
-        self.valid_numbers = SmartList()
-        self.corner = SmartList(max_length=4)
+        self.valid_numbers = SmartList(sort_=True)
+        self.corner = SmartList(max_length=4, sort_=True)
         self.value = value
-        self.colors = SmartList(max_length=4)
+        self.colors = SmartList(max_length=4, sort_=True)
 
         self.impossible_numbers = []
 
@@ -48,7 +48,7 @@ class Cell:
             cell_size
         )
 
-    def scaled_rect(self, cell_size: int, factor: float = 1):
+    def scaled_rect(self, cell_size: int, factor: float = 1) -> QRect:
         shift_by = int(cell_size - (cell_size * factor)) // 2
         return QRect(
             self.column * cell_size + cell_size + shift_by,
@@ -70,6 +70,24 @@ class Cell:
         self.valid_numbers.clear()
         self.corner.clear()
         self.colors.clear()
+
+    @property
+    def neighbours(self) -> List[int]:
+        indices = [-10, -9, -8, -1, 1, 8, 9, 10]
+
+        return [self.index + n for n in indices if self.is_neighbour(n)]
+
+    def is_neighbour(self, offset: int):
+        if not 0 <= self.index + offset <= 80:
+            return False
+
+        if self.index % 9 == 0 and offset in (-10, -1, 8):
+            return False
+
+        if self.index % 9 == 8 and offset in (-8, 1, 10):
+            return False
+
+        return True
 
     def __lt__(self, other):
         return self.value < other.value
@@ -204,7 +222,7 @@ class Cell:
             case 3:
                 return Qt.AlignBottom | Qt.AlignRight
             case _:
-                return Qt.AlignCenter
+                return Qt.AlignHCenter | Qt.AlignVCenter
 
     def set_values(self, mode: int, value: int | QColor, COLORS: List[QColor]):
 
@@ -465,17 +483,23 @@ class Sudoku:
         self.disjoint_groups = False
         self.nonconsecutive = False
 
-        self.cages: List["Cage"] = []
-
-        self.lines = []
-        self.border_constraints = SmartList()
-
-        self.cell_components = []
+        self.lines_components = SmartList()
+        self.border_components = SmartList()
+        self.cell_components = SmartList()
         self.region_components = SmartList()
         self.outside_components = SmartList()
 
-
         self.brute_force_time = 20
+
+    @property
+    def components(self):
+        return itertools.chain.from_iterable([
+            self.lines_components,
+            self.border_components,
+            self.cell_components,
+            self.region_components,
+            self.outside_components
+        ])
 
     def start_process(self):
         thread = StoppableThread(target=self.brute_force_countdown)
@@ -488,7 +512,7 @@ class Sudoku:
 
     def to_file(self):
         import json
-        filename, ext = QFileDialog.getSaveFileName(dir=os.getcwd(), filter="(*.json)")
+        filename, ext = QFileDialog.getSaveFileName(dir=os.getcwd() + "/puzzles", filter="(*.json)")
 
         data = {
 
@@ -506,9 +530,8 @@ class Sudoku:
                 "XV": False
             },
             "components": {
-                "lines": [line.to_json() for line in self.lines],
-                "border": [cmp.to_json() for cmp in self.border_constraints],
-                "cages": [cage.to_json() for cage in self.cages],
+                "lines": [line.to_json() for line in self.lines_components],
+                "border": [cmp.to_json() for cmp in self.border_components],
                 "cells": [cell_cmp.to_json() for cell_cmp in self.cell_components],
                 "regions": [region_cmp.to_json() for region_cmp in self.region_components],
                 "outside": [outside_cmp.to_json() for outside_cmp in self.outside_components]
@@ -517,28 +540,27 @@ class Sudoku:
         }
 
         with open(filename, "w") as file:
-            json.dump(data, file, indent=1)
+            json.dump(data, file, indent=2)
 
     def from_file(self):
         import json
 
-        from components import border_constraints, cell_constraint, region_constraints, outside_components
+        from components import border_components, cell_components, outside_components, \
+            line_components, region_components
 
         path, extension = QFileDialog.getOpenFileName(dir=os.getcwd(), filter="(*.json)")
 
-        self.cages.clear()
-
-        self.lines.clear()
-        self.border_constraints.clear()
-
-        self.cell_components.clear()
-        self.region_components.clear()
+        for component_list in self.components:
+            component_list.clear()
 
         with open(path, "r") as file:
             data = json.load(file)
             for i in range(81):
                 self.initial_state[i].value = int(data["digits"][i])
                 self.board[i].value = int(data["digits"][i])
+                self.board[i].valid_numbers = SmartList(sort_=True)
+                self.board[i].corner = SmartList(max_length=4, sort_=True)
+                self.board[i].colors = SmartList(max_length=4, sort_=True)
 
             for key, val in data["constraints"].items():
                 setattr(self, key, val)
@@ -547,35 +569,74 @@ class Sudoku:
                 match item["type"]:
 
                     case "XVSum":
-                        obj = border_constraints.XVSum(self, item["indices"], item["total"])
+                        obj = border_components.XVSum(self, item["indices"], item["total"])
 
                     case "Difference":
-                        obj = border_constraints.Difference(self, item["indices"],
-                                                            item["difference"])
+                        obj = border_components.Difference(self, item["indices"],
+                                                           item["difference"])
 
                     case "Ratio":
-                        obj = border_constraints.Ratio(self, item["indices"], item["ratio"])
+                        obj = border_components.Ratio(self, item["indices"], item["ratio"])
 
                     case "Quadruple":
-                        obj = border_constraints.Quadruple(self, item["indices"], SmartList(max_length=4))
+                        obj = border_components.Quadruple(self, item["indices"],
+                                                          SmartList(max_length=4))
                         for val in item["numbers"]:
                             obj.numbers.append(val)
 
                     case "LessGreater":
-                        obj = border_constraints.LessGreater(self, item["indices"], item["less"])
+                        obj = border_components.LessGreater(self, item["indices"], item["less"])
 
-                self.border_constraints.append(obj)
+                self.border_components.append(obj)
 
             for item in data["components"]["cells"]:
                 match item["type"]:
 
                     case "EvenDigit":
-                        obj = cell_constraint.EvenDigit(self, item["index"])
+                        obj = cell_components.EvenDigit(self, item["index"])
                         self.cell_components.append(obj)
 
                     case "OddDigit":
-                        obj = cell_constraint.OddDigit(self, item["index"])
+                        obj = cell_components.OddDigit(self, item["index"])
                         self.cell_components.append(obj)
+
+            for item in data["components"]["lines"]:
+                match item["type"]:
+
+                    case "Arrow":
+                        obj = line_components.Arrow(self, SmartList())
+                        obj.setup(item["index"])
+
+                        for branch in item["branches"]:
+                            obj.branches.append([self.board[ix] for ix in branch])
+
+                        self.lines_components.append(obj)
+
+                    case "LockoutLine":
+                        obj = line_components.LockoutLine(self, SmartList())
+                        obj.setup(item["index"])
+
+                        for branch in item["branches"]:
+                            obj.branches.append([self.board[ix] for ix in branch])
+
+                        self.lines_components.append(obj)
+
+                    case "BetweenLine":
+                        obj = line_components.BetweenLine(self, SmartList())
+                        obj.setup(item["index"])
+
+                        for branch in item["branches"]:
+                            obj.branches.append([self.board[ix] for ix in branch])
+
+                        self.lines_components.append(obj)
+
+                    case "PalindromeLine":
+                        obj = line_components.PalindromeLine(self, SmartList(item["indices"]))
+                        self.lines_components.append(obj)
+
+                    case "GermanWhispersLine":
+                        obj = line_components.GermanWhispersLine(self,  SmartList(item["indices"]))
+                        self.lines_components.append(obj)
 
             for item in data["components"]["outside"]:
                 match item["type"]:
@@ -583,6 +644,21 @@ class Sudoku:
                         obj = outside_components.Sandwich(self, item["col"], item["row"],
                                                           item["total"])
                         self.outside_components.append(obj)
+
+                    case "XSumsClue":
+                        obj = outside_components.XSumsClue(self, item["col"], item["row"],
+                                                           item["total"])
+                        self.outside_components.append(obj)
+
+                    case "LittleKiller":
+                        obj = outside_components.LittleKiller(self, item["col"], item["row"],
+                                                              item["total"], item["direction"])
+                        self.outside_components.append(obj)
+
+            for item in data["components"]["regions"]:
+                match item["type"]:
+                    case Cage:
+                        self.region_components.append(region_components.Cage.from_json(self, item))
 
     @classmethod
     def from_string(cls, board_str: str):
@@ -830,8 +906,6 @@ class Sudoku:
 
     def valid(self, number: int, index: int, show_constraints: bool = False):
 
-        board_to_search = self.board if self.solve_board else self.board_copy
-
         show_constraint = show_constraints
 
         for cell in self.get_entire_row(index):
@@ -853,6 +927,7 @@ class Sudoku:
         for cell_cmp in self.cell_components:
             if index != cell_cmp.index:
                 continue
+
             if not cell_cmp.valid(index, number):
                 return False
 
@@ -919,21 +994,20 @@ class Sudoku:
                             print(number, "TWICE ON DIAGONAL TOP RIGHT")
                         return False
 
-        for cage in self.cages:
-            if index not in cage.cells: continue
-
-            if not cage.valid(board_to_search, number, show_constraint=show_constraints):
-                return False
-
-        for line in self.lines:
+        for line in self.lines_components:
             if index not in line.indices: continue
 
             if not line.valid(index, number):
                 return False
-        for dot in self.border_constraints:
-            if index not in dot.indices: continue
 
-            if not dot.valid(index, number):
+        for border_cmp in self.border_components:
+            if index not in border_cmp.indices: continue
+
+            if not border_cmp.valid(index, number):
+                return False
+
+        for out_cmp in self.outside_components:
+            if not out_cmp.valid(index, number):
                 return False
 
         return True

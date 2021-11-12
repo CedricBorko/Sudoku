@@ -3,14 +3,17 @@ import datetime
 from PySide6.QtCore import Qt, QEvent
 from PySide6.QtGui import QCursor, QMouseEvent, QIcon, QResizeEvent, QEnterEvent, QAction
 from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QFrame, QHBoxLayout, QPushButton, \
-    QWidget, QSizeGrip, QComboBox, QGridLayout, QMenu, QSizePolicy, QCheckBox, QApplication
+    QWidget, QSizeGrip, QComboBox, QGridLayout, QMenu, QSizePolicy, QCheckBox, QApplication, \
+    QLineEdit, QLabel, QTextEdit
 
 from board import SudokuBoard
-from components.cell_constraint import EvenDigit, OddDigit
+from components.cell_components import EvenDigit, OddDigit
+from components.line_components import Arrow, LockoutLine, BetweenLine, PalindromeLine
 from components.outside_components import Sandwich
+from components.region_components import Cage
 from menus import ConstraintsMenu, ComponentMenu
 from sudoku import Sudoku
-from utils import monitor_size
+from utils import monitor_size, SmartList
 
 
 class SudokuWindow(QMainWindow):
@@ -31,8 +34,8 @@ class SudokuWindow(QMainWindow):
             "QFrame#title_bar QPushButton:hover#exit_btn{background: #DC143C}"
             "QFrame#title_bar QLabel{font-weight: bold}"
             "QPushButton{background: transparent; border: 1px solid rgb(120, 120, 120)}"
-            "QPushButton:hover{background: white}"
-            "QPushButton:checked{border: 4px solid #01C4FF; background: #CCCCCC; font-weight: bold}"
+            "QPushButton:hover{background: white; border: 2px solid #01C4FF }"
+            "QPushButton:checked{border: 4px solid #01C4FF; border-radius: 5px; font-weight: bold}"
             "QMenu{background: white}"
             "QMenu:separator{background: #6A6A6A; height: 2px; margin: 4px}"
             "QMenu:item{padding-right: 10px; padding-left: 10px; height: 30px; width: 250px; border: none}"
@@ -67,27 +70,18 @@ class SudokuWindow(QMainWindow):
         self.title_bar.move_center()
 
         self.mode_switch = QComboBox(self)
-        self.mode_switch.setFixedHeight(40)
         self.mode_switch.addItems(["Normal", "Center", "Corner", "Color"])
 
         self.solve_btn = QPushButton("Solve")
-        self.solve_btn.setFixedHeight(40)
-        self.solve_btn.setMinimumWidth(150)
         self.solve_btn.setCursor(QCursor(Qt.PointingHandCursor))
 
         self.clear_btn = QPushButton("Clear Grid")
-        self.clear_btn.setFixedHeight(40)
-        self.clear_btn.setMinimumWidth(150)
         self.clear_btn.setCursor(QCursor(Qt.PointingHandCursor))
 
         self.save_btn = QPushButton("Save Grid")
-        self.save_btn.setFixedHeight(40)
-        self.save_btn.setMinimumWidth(200)
         self.save_btn.setCursor(QCursor(Qt.PointingHandCursor))
 
         self.load_btn = QPushButton("Load Grid")
-        self.load_btn.setFixedHeight(40)
-        self.load_btn.setMinimumWidth(150)
         self.load_btn.setCursor(QCursor(Qt.PointingHandCursor))
 
         self.highlight_cells_box = QCheckBox("Highlight Cells seen from selection", self)
@@ -96,6 +90,8 @@ class SudokuWindow(QMainWindow):
 
         self.constraints_menu = ConstraintsMenu(self)
         self.component_menu = ComponentMenu(self)
+
+        self.rule_view = RuleView()
 
         ############################################################################################
 
@@ -130,6 +126,7 @@ class SudokuWindow(QMainWindow):
         self.content_layout.addWidget(self.board, 0, 0, 1, 1)
         self.content_layout.addLayout(self.settings_layout, 0, 1, 1, 1)
 
+        self.settings_layout.addWidget(self.rule_view, 0, 0, 2, 2)
         self.settings_layout.addWidget(self.component_menu, 0, 2, 2, 2)
         self.settings_layout.addWidget(self.mode_switch, 2, 2, 1, 1)
         self.settings_layout.addWidget(self.solve_btn, 2, 0, 1, 2)
@@ -388,7 +385,7 @@ class SudokuTitleBar(QFrame):
                 self.restore()
 
             self.window.move(self.window.pos() + (
-                    event.pos() - self.last_mouse_position))
+                event.pos() - self.last_mouse_position))
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
         if event.buttons() == Qt.LeftButton:
@@ -412,14 +409,60 @@ class SudokuTitleBar(QFrame):
         self.title_label.setText(f"{minutes}:{seconds}")
 
     def move_center(self):
+        return
         width, height = monitor_size()
         screen = QApplication.primaryScreen()
 
         self.window.setGeometry(
-            screen.geometry().width() // 2 - screen.geometry().width() // 2,
-            screen.geometry().height() // 2 - screen.geometry().height() // 2,
+            width // 2 - screen.geometry().width() // 2,
+            height // 2 - screen.geometry().height() // 2,
             screen.geometry().width() // 2, screen.geometry().height() // 2
         )
 
         # surface: 2736 x 1824
 
+
+class RuleView(QFrame):
+    def __init__(self):
+        super().__init__()
+
+        self.rules = []
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        self.setStyleSheet("QFrame{border: 1px solid black}"
+                           "QLabel{background: white; border: none}"
+                           "QTextEdit{background: white; border: none; padding: 15px}")
+
+        self.layout_ = QVBoxLayout(self)
+        self.layout_.setContentsMargins(0, 0, 0, 0)
+        self.layout_.setSpacing(0)
+
+        self.title_label = QLabel("Rules")
+        self.title_label.setFixedHeight(40)
+        self.title_label.setAlignment(Qt.AlignCenter)
+
+        self.rules_edit = QTextEdit()
+        self.rules_edit.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.rules_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        self.layout_.addWidget(self.title_label)
+        self.layout_.addWidget(self.rules_edit)
+
+    def add_rule(self, rule: str):
+        if rule in self.rules:
+            return
+
+        self.rules.append(rule)
+        self.rules_edit.setHtml("")
+
+        html_text = "<ul>"
+        for rule in self.rules:
+            html_text += "<li>" + rule + "</li>"
+        self.rules_edit.setHtml(html_text)
+
+    def remove_rule(self, rule: str):
+        pass
+
+    def update(self):
+        super(RuleView, self).update()
+        print("TEST")

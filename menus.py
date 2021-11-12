@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import copy
+from typing import Type
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCheckBox, QFrame, QVBoxLayout, QPushButton, \
-    QButtonGroup, QSizePolicy, QHBoxLayout
+    QButtonGroup, QSizePolicy, QHBoxLayout, QGridLayout
 
-from components.border_constraints import XVSum, LessGreater, Quadruple, BorderComponent, Ratio, \
-    Difference
-from components.line_constraints import LineComponent
-from components.region_constraints import RegionComponent
+from components.border_components import XVSum, LessGreater, Quadruple, BorderComponent, Ratio, \
+    Difference, Component
+from components.cell_components import OddDigit, EvenDigit
+from components.line_components import LineComponent, GermanWhispersLine, Thermometer, \
+    PalindromeLine, Arrow, BetweenLine, LockoutLine
+from components.region_components import RegionComponent, Cage, Clone
 from components.outside_components import Sandwich, XSumsClue, LittleKiller, OutsideComponent
 from utils import SmartList
 
@@ -24,58 +27,82 @@ class ComponentMenu(QFrame):
         self.toggle_btn = QPushButton("Toggle Components")
         self.toggle_btn.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         self.toggle_btn.setFixedHeight(40)
+        self.toggle_btn.setFixedWidth(400)
         self.toggle_btn.clicked.connect(self.toggle_buttons)
 
         self.component_group = QButtonGroup()
 
-        self.layout_ = QVBoxLayout(self)
+        self.layout_ = QGridLayout(self)
         self.layout_.setContentsMargins(0, 0, 0, 0)
         self.layout_.setSpacing(5)
-        self.layout_.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
+        self.layout_.setAlignment(Qt.AlignTop | Qt.AlignLeft)
 
-        self.layout_.addWidget(self.toggle_btn)
+        self.layout_.addWidget(self.toggle_btn, 0, 0, 1, 2)
 
-        self.hidden_button = QPushButton()
-        self.hidden_button.hide()
-        self.hidden_button.setCheckable(True)
-        self.hidden_button.setChecked(True)
+        self.digit_btn = QPushButton("Digits")
+        self.digit_btn.setFixedHeight(40)
+        self.digit_btn.setFixedWidth(400)
+        self.digit_btn.setCheckable(True)
+        self.digit_btn.setChecked(True)
+        self.digit_btn.clicked.connect(self.uncheck)
 
-        self.component_group.addButton(self.hidden_button)
+        self.component_group.addButton(self.digit_btn)
+        self.layout_.addWidget(self.digit_btn, 10, 0, 1, 2)
 
-        self.add_button(ComponentButton(self, Ratio(self.sudoku, [])))
-        self.add_button(ComponentButton(self, Difference(self.sudoku, [])))
-        self.add_button(ComponentButton(self, XVSum(self.sudoku, [])))
-        self.add_button(ComponentButton(self, Quadruple(self.sudoku, [], SmartList(max_length=4))))
-        self.add_button(ComponentButton(self, LessGreater(self.sudoku, [])))
-        self.add_button(ComponentButton(self, Sandwich(self.sudoku, col=0, row=1, total=0)))
-        self.add_button(ComponentButton(self, XSumsClue(self.sudoku, col=0, row=1, total=0)))
-        self.add_button(ComponentButton(self, LittleKiller(self.sudoku, col=10, row=1, total=0, direction=LittleKiller.TOP_LEFT)))
-
+        self.add_button(ComponentButton(self, Ratio(self.sudoku, [])), 1, 0)
+        self.add_button(ComponentButton(self, Difference(self.sudoku, [])), 1, 1)
+        self.add_button(ComponentButton(self, XVSum(self.sudoku, [])), 2, 0)
+        self.add_button(ComponentButton(self, Quadruple(self.sudoku, [], SmartList(max_length=4, sort_=True))),
+                        2, 1)
+        self.add_button(ComponentButton(self, LessGreater(self.sudoku, [])), 3, 0)
+        self.add_button(ComponentButton(self, Sandwich(self.sudoku, col=0, row=1, total=0)), 3, 1)
+        self.add_button(ComponentButton(self, XSumsClue(self.sudoku, col=0, row=1, total=0)), 4, 0)
+        self.add_button(
+            ComponentButton(
+                self,
+                LittleKiller(self.sudoku, col=10, row=1, total=0, direction=LittleKiller.TOP_LEFT)
+            ),
+            4, 1
+        )
+        self.add_button(ComponentButton(self, EvenDigit(self.sudoku, 0)), 5, 0)
+        self.add_button(ComponentButton(self, OddDigit(self.sudoku, 0)), 5, 1)
+        self.add_button(ComponentButton(self, Thermometer(self.sudoku, SmartList())), 6, 0)
+        self.add_button(ComponentButton(self, GermanWhispersLine(self.sudoku, SmartList())), 6, 1)
+        self.add_button(ComponentButton(self, Cage(self.sudoku, SmartList(max_length=9))), 7, 0)
+        self.add_button(ComponentButton(self, PalindromeLine(self.sudoku, SmartList())), 7, 1)
+        self.add_button(ComponentButton(self, Arrow(self.sudoku, SmartList())), 8, 0)
+        self.add_button(ComponentButton(self, BetweenLine(self.sudoku, SmartList())), 8, 1)
+        self.add_button(ComponentButton(self, LockoutLine(self.sudoku, SmartList())), 9, 0)
+        # self.add_button(ComponentButton(self, Clone(self.sudoku, SmartList())), 9, 1)
 
     def toggle_buttons(self):
         for button in self.component_group.buttons():
-            if button is not self.hidden_button:
-                button.setVisible(not button.isVisible())
+            button.setVisible(not button.isVisible())
 
-    def add_button(self, button: ComponentButton):
+    def add_button(self, button: ComponentButton, row: int, col: int, r_span: int = 1,
+                   c_span: int = 1):
         self.component_group.addButton(button)
-        self.layout_.addWidget(button)
+        self.layout_.addWidget(button, row, col, r_span, c_span)
 
-    def set_component(self, component: BorderComponent | LineComponent | RegionComponent | OutsideComponent):
+    def set_component(self,
+                      component: Component):
         self.window_.board.making_quadruple = isinstance(component, Quadruple)
         self.window_.board.current_component = copy.copy(component)
         self.window_.board.selected.clear()
         self.window_.update()
 
     def uncheck(self):
-        self.hidden_button.setChecked(True)
+        self.digit_btn.setChecked(True)
+        self.window_.board.current_component = None
+        self.window_.board.selected.clear()
+
 
 
 class ComponentButton(QPushButton):
     def __init__(
-            self,
-            parent: ComponentMenu,
-            component: BorderComponent | LineComponent | RegionComponent | OutsideComponent
+        self,
+        parent: ComponentMenu,
+        component: Component
     ):
         super().__init__(parent)
 

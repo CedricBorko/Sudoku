@@ -2,7 +2,7 @@ import itertools
 import math
 import os
 import threading
-from typing import Tuple, T
+from typing import Tuple, T, List
 
 from PySide6.QtCore import QPoint
 from PySide6.QtGui import QColor, QPainter
@@ -29,7 +29,7 @@ def sum_last_n(n: int):
 
 
 def smallest_sum_including_x(x: int, amount: int):
-    return sum(range(1, amount + 1)) + (x if x not in range(1, amount + 1) else amount + 1)
+    return sum(range(1, amount)) + (x if x not in range(1, amount) else amount)
 
 
 class StoppableThread(threading.Thread):
@@ -69,10 +69,15 @@ def uniquify(path):
 
 
 class SmartList(list):
-    def __init__(self, max_length: int = None):
+    def __init__(self, items: List = None, max_length: int = None, sort_: bool = False):
         super().__init__()
 
         self.max_length = max_length
+        self.sort_ = sort_
+
+        if items is not None:
+            for item in items:
+                self.append(item)
 
     def append(self, __object: T) -> None:
         if __object in self:
@@ -82,10 +87,11 @@ class SmartList(list):
                 return
             super(SmartList, self).append(__object)
 
-        if isinstance(__object, QColor):
-            self.sort(key=lambda color: color.redF())
-        else:
-            self.sort()
+        if self.sort_:
+            if isinstance(__object, QColor):
+                self.sort(key=lambda color: color.redF())
+            else:
+                self.sort()
 
     def only(self, __object: T) -> bool:
         return len(self) == 1 and __object in self
@@ -93,6 +99,3 @@ class SmartList(list):
 
 def distance(p1: QPoint, p2: QPoint) -> float:
     return math.sqrt((p2.x() - p1.x()) ** 2 + (p2.y() - p1.y()) ** 2)
-
-
-

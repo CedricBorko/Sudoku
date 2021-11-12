@@ -1,0 +1,840 @@
+from __future__ import annotations
+import math
+from typing import List, Tuple, Optional
+
+from PySide6.QtCore import Qt, QPoint
+from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QPolygon
+
+from components.border_components import Component
+from sudoku import Sudoku, Cell
+from utils import smallest_sum_including_x, sum_first_n, SmartList
+
+
+class LineComponent(Component):
+    def __init__(self, sudoku: "Sudoku", indices: List[int]):
+        super().__init__(sudoku, indices)
+
+        self.color = QColor("#CCCCCC")
+        self.thickness = 10
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            for index in self.indices:
+                if index in other.indices:
+                    return True
+        return False
+
+    def get(self, index: int) -> LineComponent:
+        for cmp in self.sudoku.lines_components:
+            if isinstance(cmp, self.__class__) and index in cmp.indices:
+                return cmp
+
+    @property
+    def ends(self):
+        return self.first.index, self.last.index
+
+    def setup(self, index: int):
+        self.indices = SmartList([index])
+
+    def clear(self):
+        self.indices = SmartList()
+
+    def position_on_line(self, cell_index: int) -> int:
+        return self.indices.index(cell_index)
+
+    def center(self) -> Tuple:
+        if (length := len(self.indices)) % 2 == 0:
+            return self.indices[length // 2 - 1:length // 2 + 1]
+
+        return self.sudoku.board[self.indices[length // 2]],
+
+    def check_valid(self):
+        return True
+
+    def next_cell(self, cell_index: int) -> Cell:
+        if cell_index != self.indices[-1]:
+            n = self.indices[self.position_on_line(cell_index) + 1]
+            return self.sudoku.board[n]
+
+    def previous_cell(self, cell_index: int) -> Cell:
+        if cell_index != self.indices[0]:
+            p = self.indices[self.position_on_line(cell_index) - 1]
+            return self.sudoku.board[p]
+
+    def on_end(self, cell_index: int):
+        return cell_index in (self.indices[0], self.indices[-1])
+
+    def distance(self, i1: int, i2: int):
+        return math.fabs(self.position_on_line(i1) - self.position_on_line(i2))
+
+    @staticmethod
+    def draw_path(painter, cells: List[QPoint]):
+        for i in range(len(cells) - 1):
+            painter.drawLine(cells[i], cells[i + 1])
+
+    def draw(self, painter: QPainter, cell_size: int):
+
+        pen = QPen(self.color, self.thickness)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setBrush(QBrush(self.color))
+        painter.setPen(pen)
+
+        if len(self.indices) == 1:
+            painter.drawEllipse(
+                self.cells[0].scaled_rect(cell_size, 0.2)
+            )
+
+        else:
+            self.draw_path(painter, [c.rect(cell_size).center() for c in self.cells])
+
+    def to_json(self):
+        return {
+            "type": self.__class__.__name__,
+            "indices": self.indices
+        }
+
+
+class GermanWhispersLine(LineComponent):
+    """
+    A constraint that forces digits on the line to have a difference of at least 5
+    to the cell before and after
+    """
+
+    NAME = "German Whispers Line"
+    HIGHS = {6, 7, 8, 9}
+    LOWS = {1, 2, 3, 4}
+
+    LAYER = 5
+    RULE = "Cells on a green line must have a difference of at least 5."
+
+    def __init__(self, sudoku: Sudoku, indices: List[int]):
+        super().__init__(sudoku, indices)
+
+        self.color = QColor("#10b558")
+        self.thickness = 10.0
+
+    def to_json(self):
+        return {
+            "type": self.__class__.__name__,
+            "indices": self.indices,
+        }
+
+    def __eq__(self, other):
+        if isinstance(other, GermanWhispersLine):
+            for index in self.indices:
+                if index in other.indices:
+                    return True
+        return False
+
+    def valid(self, index: int, number: int):
+        if number == 5:
+            return False
+
+        prev = self.previous_cell(index)
+        nxt = self.next_cell(index)
+
+        hit = None
+        for cell in self.cells:
+            if cell.value != 0:
+                hit = cell
+
+        if hit:
+            if hit.value in self.LOWS and hit.index != index:
+                if int(self.distance(hit.index, index)) % 2 == 0 and number not in self.LOWS:
+                    return False
+
+                if int(self.distance(hit.index, index)) % 2 != 0 and number not in self.HIGHS:
+                    return False
+
+            if hit.value in self.HIGHS and hit.index != index:
+                if int(self.distance(hit.index, index)) % 2 == 0 and number not in self.HIGHS:
+                    return False
+
+                if int(self.distance(hit.index, index)) % 2 != 0 and number not in self.LOWS:
+                    return False
+
+        if prev and prev.value != 0 and math.fabs(prev.value - number) < 5:
+            return False
+
+        if nxt and nxt.value != 0 and math.fabs(nxt.value - number) < 5:
+            return False
+
+        return True
+
+    def valid_location(self, index: int, not_on_border: bool):
+        if index in self.first.neighbours and not_on_border:
+            if index not in self.indices:
+                self.indices.insert(0, index)
+                return True
+
+        elif index in self.last.neighbours and not_on_border:
+            if index not in self.indices:
+                self.indices.append(index)
+                return True
+        return False
+
+    def setup(self, index: int):
+        self.indices = SmartList([index])
+
+    @property
+    def ends(self):
+        return self.first.index, self.last.index
+
+    def get(self, index: int):
+        for cmp in self.sudoku.lines_components:
+            if isinstance(cmp, GermanWhispersLine) and index in cmp.indices:
+                return cmp
+
+    def clear(self):
+        self.indices = SmartList([])
+
+
+class PalindromeLine(LineComponent):
+    NAME = "Palindrome Line"
+
+    LAYER = 4
+    RULE = "The numbers on the grey line appear the same forward and backward."
+
+    def __init__(self, sudoku: "Sudoku", indices: SmartList[int]):
+        super().__init__(sudoku, indices)
+
+        self.color = QColor("#CCCCCC")
+        self.thickness = 16.0
+
+        for index in self.indices:
+            self.opposite(index)
+
+    def to_json(self):
+        return {
+            "type": self.__class__.__name__,
+            "indices": self.indices,
+        }
+
+    def opposite(self, cell_index: int):
+        pos = self.position_on_line(cell_index)
+        sop = len(self) - pos - 1
+
+        return sop
+
+    def setup(self, index: int):
+        self.indices = SmartList([index])
+
+    @property
+    def ends(self):
+        return self.first.index, self.last.index
+
+    def __repr__(self):
+        return f"{self.ends}"
+
+    def __eq__(self, other):
+        if isinstance(other, PalindromeLine):
+            for index in self.indices:
+                if index in other.indices:
+                    return True
+        return False
+
+    def get(self, index: int):
+        for cmp in self.sudoku.lines_components:
+            if isinstance(cmp, PalindromeLine) and index in cmp.indices:
+                return cmp
+
+    def clear(self):
+        self.indices = SmartList([])
+
+    def valid(self, index: int, number: int):
+
+        opp = self.opposite(index)
+
+        if self.cells[opp].value != 0 and number != self.cells[opp].value:
+            return False
+
+        return True
+
+    def valid_location(self, index: int, diagonal: bool):
+
+        if index in self.first.neighbours and diagonal:
+            if index not in self.indices:
+                self.indices.insert(0, index)
+                return True
+
+        elif index in self.last.neighbours and diagonal:
+            if index not in self.indices:
+                self.indices.append(index)
+                return True
+        return False
+
+
+class Thermometer(LineComponent):
+    NAME = "Thermometer"
+    RULE = "The numbers on the thermometer must strictly increase starting from the bulb end."
+
+    LAYER = 1
+
+    def __init__(self, sudoku: "Sudoku", indices: List[int]):
+        super().__init__(sudoku, indices)
+
+        if self.indices:
+            self.bulb = self.sudoku.board[self.indices[0]]
+        else:
+            self.bulb = None
+
+    def __repr__(self):
+        return ' -> '.join(map(str, self.indices))
+
+    def ascending(self, number: int, pos: int):
+        for cell in [c for c in self.cells[pos + 1:] if c.value != 0]:
+            if number > cell.value:
+                return False, cell
+        return True, None
+
+    def empties(self, start: int):
+        cells = []
+        for i in range(start + 1, len(self.indices)):
+
+            if self.cells[i].value == 0:
+                cells.append(self.cells[i])
+            else:
+                cells.append(self.cells[i])
+                break
+
+        return cells
+
+    def enough_space(self, index: int, number: int):
+
+        seq = self.empties(index)
+        if not seq:
+            return True, [1]
+        if all(x.value == 0 for x in seq):
+            return True, seq
+
+        return number + len(seq) - 1 < seq[-1].value, seq
+
+    def possible_index(self, number: int, index: int, show_constraint: bool = False):
+        if number == 1 and index != 0:
+            if show_constraint:
+                print(number, "CAN ONLY GO ON THE FIRST POSITION IN A THERMOMETER")
+
+            return False
+
+        if number == 9 and index != len(self.indices) - 1:
+            if show_constraint:
+                print(number, "CAN ONLY GO ON THE LAST POSITION IN A THERMOMETER")
+            return False
+
+        space_after = len(self.indices[index + 1:])
+        space_before = len(self.indices[:index])
+
+        if number > 9 - space_after:
+            if show_constraint:
+                print(number, "TOO MUCH SPACE AFTER")
+
+            return False
+
+        if number <= space_before:
+            if show_constraint:
+                print(number, "NOT ENOUGH SPACE BEFORE")
+            return False
+
+        return True
+
+    def valid(self, index: int, number: int) -> bool:
+
+        line_pos = self.position_on_line(index)
+
+        for i in self.indices[line_pos + 1:]:
+            cell = self.sudoku.board[i]
+            if cell.value != 0 and cell.value <= number:
+                return False
+
+        for i in self.indices[:line_pos]:
+            cell = self.sudoku.board[i]
+            if cell.value != 0 and cell.value >= number:
+                return False
+
+        if number < line_pos + 1:
+            return False
+
+        if len(self.indices) - line_pos > 10 - number:
+            return False
+
+        nxt = self.next_cell(index)
+        if nxt and nxt.valid_numbers:
+            if all(number >= vn for vn in nxt.valid_numbers):
+                return False
+
+        prev = None
+        for i in range(line_pos):
+            if self.cells[i].value != 0:
+                prev = self.cells[i]
+
+        if prev:
+            dst = line_pos - self.cells.index(prev)
+            if dst > 1:
+                if number - prev.value < dst:
+                    return False
+
+        return True
+
+    def check_valid(self):
+        if len(self.indices) <= 1 or len(self.indices) > 9:
+            return False
+        return True
+
+    def draw(self, painter: QPainter, cell_size: int):
+
+        brush = QBrush(QColor("#BBBBBB"))
+        painter.setBrush(brush)
+
+        pen = QPen(QColor("#BBBBBB"), 8.0)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+
+        if not self.bulb:
+            return
+        row, col = self.bulb.row, self.bulb.column
+
+        painter.drawEllipse(
+            cell_size // 4 + cell_size + col * cell_size - 5,
+            cell_size // 4 + cell_size + row * cell_size - 5,
+            cell_size // 2 + 10, cell_size // 2 + 10
+        )
+
+        pen = QPen(QColor("#BBBBBB"), 20.0)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+
+        for i in range(len(self.cells) - 1):
+            c1 = self.cells[i]
+            c2 = self.cells[i + 1]
+
+            painter.drawLine(
+                cell_size // 2 + cell_size + c1.column * cell_size,
+                cell_size // 2 + cell_size + c1.row * cell_size,
+                cell_size // 2 + cell_size + c2.column * cell_size,
+                cell_size // 2 + cell_size + c2.row * cell_size,
+            )
+
+
+class Arrow(LineComponent):
+    NAME = "Arrow"
+
+    LAYER = 2
+    RULE = "Number on the arrow sum to the number in the circle at its start."
+
+    def __init__(self, sudoku: "Sudoku", indices: SmartList[int]):
+        super().__init__(sudoku, indices)
+
+        self.bulb = None
+        self.branches: List[List[Cell]] = []
+
+        self.current_branch = None
+
+    def get(self, index: int):
+
+        for cmp in self.sudoku.lines_components:
+            if isinstance(cmp, Arrow) and cmp.bulb.index == index:
+                return cmp
+
+    @property
+    def ends(self):
+        return self.first.index,
+
+    def clear(self):
+        self.branches = []
+        self.indices = SmartList()
+
+    def __eq__(self, other):
+        if isinstance(other, Arrow):
+            return self.bulb == other.bulb
+        return False
+
+    def __repr__(self):
+        return f"{' -> '.join(map(str, self.cells))}"
+
+    def sum_so_far(self):
+        return sum([c.value for c in self.cells[self.bulb.index:] if c.value != 0])
+
+    def get_branch(self, index: int) -> List[Cell]:
+
+        for branch in self.branches:
+            if index in [c.index for c in branch]:
+                return branch
+
+    def delete_branch(self, index: int) -> bool:
+        if (branch := self.get_branch(index)) is not None:
+            self.branches.remove(branch)
+            del branch
+            return True
+        return False
+
+    def setup(self, index: int):
+        self.indices = [index]
+        self.bulb = self.sudoku.board[index]
+        self.branches = []
+
+    def valid_location(self, index: int) -> bool:
+        return (
+            index in self.current_branch[-1].neighbours
+            and index != self.bulb.index
+            and index not in [c.index for c in self.current_branch]
+        )
+
+    def can_remove(self, index: int):
+        if len(self.current_branch) > 1 and index == self.current_branch[-2].index:
+            return True
+        return False
+
+    def to_json(self):
+        return {
+            "type": self.__class__.__name__,
+            "index": self.bulb.index,
+            "branches": [[c.index for c in branch] for branch in self.branches]
+        }
+
+    @property
+    def arrow_cells(self) -> Optional[List[Cell]]:
+        return self.cells[self.bulb.index + 1:]
+
+    def can_create(self, click_x: int, click_y: int) -> bool:
+        return len(self.cells) > 1
+
+    @property
+    def arrow_filled(self):
+        return all([c.value != 0 for c in self.arrow_cells])
+
+    @property
+    def unique(self):
+        for cell in self.arrow_cells:
+            for other in self.arrow_cells:
+                if cell == other:
+                    continue
+                if other not in self.sudoku.sees(cell.index):
+                    return False
+        return True
+
+    def valid(self, index: int, number: int):
+
+        if self.position_on_line(index) == self.bulb:
+
+            if self.unique:
+                return number >= sum_first_n(len(self.arrow_cells))
+
+                # Only one number is possible now! The sum of all other digits
+            if self.arrow_filled:
+                return number == sum([c.value for c in self.arrow_cells])
+
+            # In Case Arrow is just one extra Cell (Bulb and Tip)
+            if len(self.cells) == 2:
+                return self.cells[1] not in self.sudoku.get_orthogonals(index)
+
+            return True
+
+        else:
+
+            if smallest_sum_including_x(number, len(self.arrow_cells)) > 9:
+                return False
+
+            if self.sum_so_far() + number > self.bulb.value:
+                return False
+
+            return True
+
+    @staticmethod
+    def dot_product(v1: QPoint, v2: QPoint = QPoint(0, 1)):
+        return v1.x() * v2.x() + v1.y() * v2.y()
+
+    def length(self, vec: QPoint):
+        return math.sqrt(self.dot_product(vec, vec))
+
+    def angle(self, vec1: Tuple[int, int], vec2: Tuple[int, int] = (0, 1)):
+        return math.acos(self.dot_product(vec1, vec2) / (self.length(vec1) * self.length(vec2)))
+
+    def draw(self, painter: QPainter, cell_size: int):
+
+        pen = QPen(QColor("#BBBBBB"), 5.0)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+
+        if self.bulb is None:
+            return
+
+        for branch in self.branches:
+            if not branch:
+                continue
+
+            painter.drawLine(
+                self.bulb.rect(cell_size).center(),
+                branch[0].rect(cell_size).center()
+            )
+
+        for branch in self.branches:
+            self.draw_path(painter, [c.rect(cell_size).center() for c in branch])
+
+        for branch in self.branches:
+            start = branch[-1]
+            end = self.bulb if len(branch) == 1 else branch[-2]
+
+            tip_end = start.rect(cell_size).center()
+
+            p1 = QPoint(
+                int(cell_size * 1.5) + end.column * cell_size,
+                int(cell_size * 1.5) + end.row * cell_size,
+            )
+
+            p2 = QPoint(
+                int(cell_size * 1.5) + start.column * cell_size,
+                int(cell_size * 1.5) + start.row * cell_size,
+            )
+
+            vector = p2 - p1
+
+            length = self.length(vector)
+            width = cell_size // 2
+
+            arrow_head = width / (2 * (math.tan(45) / 2) * length)
+            arrow_head_start = p2 + (-arrow_head * vector)
+
+            normal = QPoint(-vector.y(), vector.x())
+            t_normal = width / (2 * length)
+            left = arrow_head_start + t_normal * normal
+            right = arrow_head_start - t_normal * normal
+
+            painter.drawLine(tip_end, left)
+            painter.drawLine(tip_end, right)
+
+        painter.setBrush(QBrush(QColor(255, 255, 255)))
+        painter.drawEllipse(self.bulb.scaled_rect(cell_size, 0.8))
+
+        return
+
+
+class BetweenLine(LineComponent):
+    NAME = "Between Line"
+
+    LAYER = 6
+    RULE = "Numbers on a line with 2 circles at its end must be strictly between the numbers in these circles."
+
+    def __init__(self, sudoku: "Sudoku", indices: SmartList[int]):
+        super().__init__(sudoku, indices)
+
+        self.bulb = None
+        self.branches: List[List[Cell]] = []
+
+        self.current_branch = None
+
+        self.color = QColor("#CCCCCC")
+
+    def get(self, index: int):
+
+        for cmp in self.sudoku.lines_components:
+            if isinstance(cmp, BetweenLine) and cmp.bulb.index == index:
+                return cmp
+
+    def to_json(self):
+        return {
+            "type": self.__class__.__name__,
+            "index": self.bulb.index,
+            "branches": [[c.index for c in branch] for branch in self.branches]
+        }
+
+    @property
+    def ends(self):
+        return [self.first.index] + [branch[-1].index for branch in self.branches]
+
+    def clear(self):
+        self.branches = []
+        self.indices = SmartList()
+
+    def setup(self, index: int):
+        self.indices = [index]
+        self.bulb = self.sudoku.board[index]
+        self.branches = []
+
+    @property
+    def bulbs(self):
+        return [branch[-1] for branch in self.branches]
+
+    def valid_location(self, index: int) -> bool:
+        return (
+            index in self.current_branch[-1].neighbours
+            and index != self.bulb.index
+            and index not in [c.index for c in self.current_branch]
+        )
+
+    def get_branch(self, index: int) -> List[Cell]:
+
+        for branch in self.branches:
+            if index in [c.index for c in branch]:
+                return branch
+
+    def delete_branch(self, index: int) -> bool:
+        if (branch := self.get_branch(index)) is not None:
+            self.branches.remove(branch)
+            del branch
+            return True
+        return False
+
+    def can_remove(self, index: int):
+        if len(self.current_branch) > 1 and index == self.current_branch[-2].index:
+            return True
+        return False
+
+    def draw(self, painter: QPainter, cell_size: int):
+
+        radius = cell_size - 10
+
+        if self.bulb is None:
+            return
+
+        for branch in self.branches:
+            pen = QPen(QColor("#BBBBBB"), 5.0)
+            pen.setCapStyle(Qt.RoundCap)
+            painter.setPen(pen)
+
+            self.draw_path(painter,
+                           [self.bulb.rect(cell_size).center()] + [c.rect(cell_size).center() for c
+                                                                   in branch])
+
+            pen = QPen(QColor("#BBBBBB"), 5.0)
+            pen.setCapStyle(Qt.RoundCap)
+            painter.setPen(pen)
+            painter.setBrush(QBrush(QColor(240, 240, 240)))
+
+            rect_end = branch[-1].rect(cell_size)
+            painter.drawEllipse(rect_end.center(), radius // 2, radius // 2)
+
+        pen = QPen(QColor("#BBBBBB"), 5.0)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+        painter.setBrush(QBrush(QColor(240, 240, 240)))
+
+        rect_start = self.bulb.rect(cell_size)
+        painter.drawEllipse(rect_start.center(), radius // 2, radius // 2)
+
+
+class LockoutLine(LineComponent):
+    NAME = "Lockout Line"
+
+    RULE = ("Numbers on a line with 2 diamonds at its end cannot be between the numbers in these diamonds."
+            " Additionally numbers in directly connected diamonds have a difference of at least 4.")
+
+    LAYER = 6
+
+    def __init__(self, sudoku: "Sudoku", indices: SmartList[int]):
+        super().__init__(sudoku, indices)
+
+        self.bulb = None
+        self.branches: List[List[Cell]] = []
+
+        self.current_branch = None
+
+        self.color = QColor("#3C01FF")
+
+    def to_json(self):
+        return {
+            "type": self.__class__.__name__,
+            "index": self.bulb.index,
+            "branches": [[c.index for c in branch] for branch in self.branches]
+        }
+
+    def get(self, index: int):
+
+        for cmp in self.sudoku.lines_components:
+            if isinstance(cmp, LockoutLine) and cmp.bulb.index == index:
+                return cmp
+
+    @property
+    def ends(self):
+        return [self.first.index] + [branch[-1].index for branch in self.branches]
+
+    def clear(self):
+        self.branches = []
+        self.indices = SmartList()
+
+    def setup(self, index: int):
+        self.indices = [index]
+        self.bulb = self.sudoku.board[index]
+        self.branches = []
+
+    @property
+    def bulbs(self):
+        return [branch[-1] for branch in self.branches]
+
+    def valid_location(self, index: int) -> bool:
+        return (
+            index in self.current_branch[-1].neighbours
+            and index != self.bulb.index
+            and index not in [c.index for c in self.current_branch]
+        )
+
+    def get_branch(self, index: int) -> List[Cell]:
+
+        for branch in self.branches:
+            if index in [c.index for c in branch]:
+                return branch
+
+    def delete_branch(self, index: int) -> bool:
+        if (branch := self.get_branch(index)) is not None:
+            self.branches.remove(branch)
+            del branch
+            return True
+        return False
+
+    def can_remove(self, index: int):
+        if len(self.current_branch) > 1 and index == self.current_branch[-2].index:
+            return True
+        return False
+
+    def draw(self, painter: QPainter, cell_size: int):
+
+        radius = cell_size - 10
+
+        if self.bulb is None:
+            return
+
+        for branch in self.branches:
+            pen = QPen(self.color, 3.0)
+            pen.setCapStyle(Qt.RoundCap)
+            painter.setPen(pen)
+
+            self.draw_path(painter,
+                           [self.bulb.rect(cell_size).center()] + [c.rect(cell_size).center() for c
+                                                                   in branch])
+
+            rect_end = branch[-1].rect(cell_size)
+            pen = QPen(QColor("#FB01FF"), 4.0)
+            pen.setCapStyle(Qt.RoundCap)
+            painter.setPen(pen)
+            painter.setBrush(QBrush(QColor(255, 255, 255)))
+
+            painter.drawPolygon(
+                QPolygon(
+                    [
+                        QPoint(rect_end.center().x(), rect_end.center().y() - radius // 2),
+                        QPoint(rect_end.center().x() + radius // 2, rect_end.center().y()),
+                        QPoint(rect_end.center().x(), rect_end.center().y() + radius // 2),
+                        QPoint(rect_end.center().x() - radius // 2, rect_end.center().y())
+                    ]
+                )
+            )
+
+        rect_start = self.cells[0].rect(cell_size)
+
+        pen = QPen(QColor("#FB01FF"), 4.0)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+        painter.setBrush(QBrush(QColor(255, 255, 255)))
+
+        painter.drawPolygon(
+            QPolygon(
+                [
+                    QPoint(rect_start.center().x(), rect_start.center().y() - radius // 2),
+                    QPoint(rect_start.center().x() + radius // 2, rect_start.center().y()),
+                    QPoint(rect_start.center().x(), rect_start.center().y() + radius // 2),
+                    QPoint(rect_start.center().x() - radius // 2, rect_start.center().y())
+                ]
+            )
+        )

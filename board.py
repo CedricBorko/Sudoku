@@ -5,16 +5,19 @@ from typing import List
 
 from PySide6.QtCore import QRect, Qt, QPoint
 from PySide6.QtGui import QPaintEvent, QPainter, QPen, QColor, QMouseEvent, QFont, \
-    QKeyEvent, QBrush
-from PySide6.QtWidgets import QWidget
+    QKeyEvent, QBrush, QResizeEvent
+from PySide6.QtWidgets import QWidget, QSizePolicy
 
-from components.border_constraints import XVSum, Quadruple, BorderComponent, Difference, Ratio, \
+from components.border_components import XVSum, Quadruple, BorderComponent, Difference, Ratio, \
     LessGreater
+from components.cell_components import OddDigit, EvenDigit, CellComponent
+from components.line_components import Arrow, LineComponent, PalindromeLine, GermanWhispersLine, \
+    BetweenLine, LockoutLine
 from components.outside_components import Sandwich, XSumsClue, LittleKiller, OutsideComponent
-from components.region_constraints import RegionComponent, Cage
+from components.region_components import RegionComponent, Cage, Clone
 from sudoku import Sudoku
 from sudoku import tile_to_poly
-
+from utils import SmartList
 
 NORTH = 0
 EAST = 1
@@ -54,9 +57,10 @@ class SudokuBoard(QWidget):
         self.steps_done = []
 
         self.setMouseTracking(True)
+        self.setMinimumSize(440, 440)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        self.cell_size = 70
-        self.setFixedSize(self.cell_size * 11, self.cell_size * 11)
+        self.cell_size = 40
 
         self.current_component = None
         self.selected_component = None
@@ -72,6 +76,11 @@ class SudokuBoard(QWidget):
         self.v_pressed = False
 
         self.cell_component_selected = False
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        self.setFixedWidth(self.height())
+        self.cell_size = self.height() // 11
+        self.update()
 
     def solve_board(self):
         self.sudoku.brute_force_time = 20
@@ -92,6 +101,7 @@ class SudokuBoard(QWidget):
         painter = QPainter(self)
 
         painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.TextAntialiasing)
         painter.drawRect(self.rect())
 
         grid_size = self.cell_size * 9
@@ -106,6 +116,8 @@ class SudokuBoard(QWidget):
 
         for cell_cmp in self.sudoku.cell_components:
             cell_cmp.draw(painter, self.cell_size)
+
+        painter.setBrush(Qt.NoBrush)
 
         # DRAW SELECTION
 
@@ -142,28 +154,6 @@ class SudokuBoard(QWidget):
             painter.drawLine(
                 self.cell_size * 10, self.cell_size, self.cell_size, self.cell_size * 10
             )
-
-        # DRAW CAGES
-
-        for cage in self.sudoku.cages:
-            cage.draw(
-                painter,
-                self.sudoku.board,
-                self.cell_size
-            )
-
-        # DRAW RENBAN / WHISPER / PALINDROME LINES / THERMOMETERS
-
-        for line in self.sudoku.lines:
-            line.draw(painter, self.cell_size)
-
-        for region_cmp in self.sudoku.region_components:
-            region_cmp.draw(painter, self.cell_size)
-
-        for outside_cmp in self.sudoku.outside_components:
-            outside_cmp.draw(painter, self.cell_size)
-
-        painter.setBrush(Qt.NoBrush)
 
         # DRAW GRID
 
@@ -222,12 +212,21 @@ class SudokuBoard(QWidget):
                 self.cell_size * 10
             )
 
-        painter.setPen(QPen(QColor("#000"), 1.0))
-
         # INDICATE CELLS SEEN BY SINGLE SELECTED CELL
 
-        for dot in self.sudoku.border_constraints:
-            dot.draw(painter, self.cell_size)
+        for line_cmp in sorted(self.sudoku.lines_components, key=lambda l_cmp: l_cmp.LAYER):
+            line_cmp.draw(painter, self.cell_size)
+
+        for region_cmp in self.sudoku.region_components:
+            region_cmp.draw(painter, self.cell_size)
+
+        for outside_cmp in self.sudoku.outside_components:
+            outside_cmp.draw(painter, self.cell_size)
+
+        for border_cmp in self.sudoku.border_components:
+            border_cmp.draw(painter, self.cell_size)
+
+        painter.setBrush(Qt.NoBrush)
 
         painter.setPen(QPen(QColor("#000"), 1.0))
 
@@ -235,7 +234,7 @@ class SudokuBoard(QWidget):
 
         for i, cell in enumerate(self.sudoku.board):
 
-            painter.setFont(QFont("Varela Round", 32, QFont.Bold))
+            painter.setFont(QFont("Asap", self.cell_size // 2, QFont.Bold))
             painter.setPen(QPen(QColor("#000000"), 1.0))
 
             if cell.colors.only(QColor("#000000")):
@@ -244,17 +243,17 @@ class SudokuBoard(QWidget):
             if cell.value != 0:
 
                 if self.sudoku.initial_state[i].value != 0:
-                    painter.setPen(QPen(QColor("#3b7cff"), 1.0))
+                    painter.setPen(QPen(QColor("#000000"), 1.0))
                 else:
                     painter.setPen(
-                        QPen(Qt.black if not COLORS[-1] in cell.colors else Qt.white, 1.0))
+                        QPen(QColor("#3b7cff") if not COLORS[-1] in cell.colors else Qt.white, 1.0))
 
                 painter.drawText(cell.rect(self.cell_size), Qt.AlignCenter, str(cell.value))
 
             else:
-                size = 10
+                size = self.cell_size // 6
                 painter.setBrush(Qt.NoBrush)
-                painter.setFont(QFont("Arial Black", size))
+                painter.setFont(QFont("Asap", size))
                 painter.setPen(QPen(QColor("#333333"), 1.0))
 
                 txt = ''.join(sorted(map(str, cell.valid_numbers)))
@@ -264,11 +263,11 @@ class SudokuBoard(QWidget):
 
                 painter.drawText(cell.rect(self.cell_size), Qt.AlignCenter, txt)
 
-                painter.setFont(QFont("Arial Black", size))
+                painter.setFont(QFont("Asap", size))
 
                 for num in cell.corner:
-                    painter.drawText(cell.scaled_rect(self.cell_size, 0.75), cell.corners(num),
-                                     str(num))
+                    painter.drawText(cell.scaled_rect(self.cell_size, 0.75), str(num),
+                                     cell.corners(num))
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         self.setFocus()
@@ -278,90 +277,214 @@ class SudokuBoard(QWidget):
 
         # CELL
 
-        col = x // self.cell_size
-        row = y // self.cell_size
+        grid_col = x // self.cell_size
+        grid_row = y // self.cell_size
 
-        location = row * 9 + col
+        location = grid_row * 9 + grid_col
 
-        col_s = event.x() // self.cell_size
-        row_s = event.y() // self.cell_size
+        if 0 <= location <= 80:
+            print(self.sudoku.valid_numbers(location))
 
-        if (isinstance(self.current_component, OutsideComponent)
-                and (col_s in (0, 10) and 1 <= row_s <= 9) or (row_s in (0, 10) and 1 <= col_s <= 9)
-                or isinstance(self.current_component, LittleKiller)
-                and ((col_s in (0, 10) and 0 <= row_s <= 10) or (row_s in (0, 10) and 0 <= col_s <= 10))
-        ):
+        outside_col = event.x() // self.cell_size
+        outside_row = event.y() // self.cell_size
 
-            if event.modifiers() == Qt.ShiftModifier:
-                cmps = [cmp for cmp in self.sudoku.outside_components if
-                        isinstance(cmp, OutsideComponent) and (cmp.row, cmp.col) == (row_s, col_s)]
+        outside_grid = grid_row < 0 or grid_row > 8 or grid_col < 0 or grid_col > 8
 
-                if cmps:
-                    self.selected_component = cmps[0]
+        cell_x = (event.x() - self.cell_size) % self.cell_size
+        cell_y = (event.y() - self.cell_size) % self.cell_size
 
-                    self.update()
-                    return
-            else:
+        selected_border = self.get_component_indices(x, y, location)
 
-                # IF LITTLER KILLER GET POSITION IN CELL CLICKED
-                self.current_component.col = col_s
-                self.current_component.row = row_s
+        threshhold = 10
+        not_on_border = not (
+            (cell_x <= threshhold and cell_y < threshhold)
+            or (cell_x <= threshhold and cell_y >= self.cell_size - threshhold)
+            or (cell_x >= self.cell_size - threshhold and cell_y < threshhold)
+            or (cell_x >= self.cell_size - threshhold and cell_y >= self.cell_size - threshhold)
+        )
 
-                if isinstance(self.current_component, LittleKiller):
-                    self.current_component.get_direction(event.pos(), self.cell_size)
+        # Manage Components
+        ############################################################################################
+        ############################################################################################
 
-                self.sudoku.outside_components.append(self.current_component)
+        if event.buttons() == Qt.LeftButton:
+            match cmp := self.current_component:
 
-                opp = self.current_component.opposite()
+                #  XSum, Sandwhich, Little Killer
+                ####################################################################################
+                case OutsideComponent():
 
-                if opp is not None and opp in self.sudoku.outside_components:
-                    self.sudoku.outside_components.remove(opp)
+                    if not cmp.can_create(outside_col, outside_row):
+                        return
 
-                self.selected_component = self.current_component
+                    # SELECT OUTSIDE
+                    if event.modifiers() == Qt.ShiftModifier:
+                        self.selected_component = self.current_component.get(outside_col,
+                                                                             outside_row)
+                        self.update()
+                        return
 
-                self.current_component = copy.copy(self.current_component)
-                self.current_component.clear()
+                    # CREATE / DELETE
+                    else:
 
-                self.update()
+                        self.current_component.setup(outside_col, outside_row)
 
+                        if isinstance(self.current_component, LittleKiller):
+                            # Little Killer needs to determine the direction of its Diagonal
+                            self.current_component.get_direction(event.pos(), self.cell_size)
 
-        if row < 0 or row > 8 or col < 0 or col > 8:
-            return
+                        self.sudoku.outside_components.append(self.current_component)
 
-        if event.buttons() == Qt.LeftButton:  # Add stuff
+                        opp = self.current_component.opposite()
 
-            selected_border = self.get_component_indices(x, y, location)
+                        # E.g. There can only be one Sandwich Clue per row / column
+                        if opp is not None and opp in self.sudoku.outside_components:
+                            self.sudoku.outside_components.remove(opp)
 
-            if event.modifiers() == Qt.ShiftModifier:
+                        self.selected_component = self.current_component
 
-                cmps = [cmp for cmp in self.sudoku.border_constraints if
-                        sorted(cmp.indices) == sorted(selected_border)]
+                        self.current_component = copy.copy(self.current_component)
+                        self.current_component.clear()
 
-                if cmps:
-                    self.selected_component = cmps[0]
-                    self.selected = {*self.selected_component.indices}
+                        self.window_.rule_view.add_rule(self.current_component.RULE)
+                        self.selected.clear()
 
-                    if isinstance(self.selected_component, LessGreater):
-                        self.selected_component.invert()
-                    self.update()
-                    return
-            else:
+                        self.update()
+                        return
 
-                if self.current_component is not None:
+                #  Difference, Ratio, LessGreater, XVSum, Quadruple
+                ####################################################################################
+                case BorderComponent() if not outside_grid and selected_border is not None:
 
-                    if isinstance(self.current_component, BorderComponent):
-                        if selected_border is not None:
+                    if event.modifiers() == Qt.ShiftModifier:
+
+                        self.selected_component = self.current_component.get(selected_border)
+
+                        if self.selected_component is None:
+                            return
+
+                        if isinstance(self.selected_component, LessGreater):
+                            self.selected_component.invert()
+
+                        self.selected = {*self.selected_component.indices}
+                        self.update()
+                        return
+                    else:
+
+                        if isinstance(self.current_component, Quadruple):
+                            self.current_component.setup(selected_border)
+                        else:
                             self.current_component.indices = selected_border
 
-                            self.sudoku.border_constraints.append(self.current_component)
-                            self.selected_component = self.current_component
+                        self.sudoku.border_components.append(self.current_component)
+                        self.selected_component = self.current_component
 
-                            self.current_component = copy.copy(self.current_component)
-                            self.current_component.clear()
+                        self.current_component = copy.copy(self.current_component)
+                        self.current_component.clear()
 
-                            self.selected = {*self.selected_component.indices}
-                            self.update()
+                        self.window_.rule_view.add_rule(self.current_component.RULE)
+
+                        self.selected = {*self.selected_component.indices}
+                        self.update()
+
+                        return
+
+                #  Even, Odd
+                ####################################################################################
+                case CellComponent() if not outside_grid:
+
+                    if event.modifiers() == Qt.ShiftModifier:
+
+                        self.selected_component = self.current_component.get(location)
+                        if self.selected_component is None:
                             return
+
+                        self.selected = {self.selected_component.index}
+                        self.update()
+
+                        return
+                    else:
+                        self.current_component.index = location
+
+                        self.sudoku.cell_components.append(self.current_component)
+                        self.selected_component = self.current_component
+
+                        self.current_component = copy.copy(self.current_component)
+                        self.current_component.clear()
+                        self.window_.rule_view.add_rule(self.current_component.RULE)
+
+                        self.selected = {self.selected_component.index}
+                        self.update()
+                        return
+
+                #  Arrow, Thermo, GW, Renban, Palindrome...
+                ####################################################################################
+                case LineComponent() if not outside_grid:
+
+                    if event.modifiers() == Qt.ControlModifier:
+                        if (self.selected_component is not None
+                            and not isinstance(self.selected_component,
+                                               Arrow | BetweenLine | LockoutLine)):
+                            if self.selected_component.valid_location(location, not_on_border):
+                                self.update()
+                                self.selected = {*self.selected_component.ends}
+                        return
+
+                    if event.modifiers() == Qt.ShiftModifier:
+                        self.selected_component = self.current_component.get(location)
+                        if not self.selected_component:
+                            self.selected.clear()
+                            return
+
+                        self.selected = {*self.selected_component.ends}
+                        self.update()
+                        return
+
+                    if event.modifiers() == Qt.NoModifier:
+                        if isinstance(self.selected_component, Arrow | LockoutLine | BetweenLine):
+                            if self.selected_component.delete_branch(location):
+                                self.update()
+                                self.selected.clear()
+                                return
+
+                        self.current_component.setup(location)
+
+                        self.sudoku.lines_components.append(self.current_component)
+                        self.selected_component = self.current_component
+
+                        self.current_component = copy.copy(self.current_component)
+                        self.current_component.clear()
+                        self.window_.rule_view.add_rule(self.current_component.RULE)
+
+                        self.update()
+                        return
+
+                case RegionComponent() if not outside_grid:
+                    if event.modifiers() == Qt.ShiftModifier:
+                        self.selected_component = self.current_component.get(location)
+
+                        if not self.selected_component:
+                            return
+
+                        self.selected = {*self.selected_component.indices}
+                        self.update()
+                        return
+
+                    else:
+
+                        self.current_component.indices = SmartList([location], max_length=9)
+
+                        self.sudoku.region_components.append(self.current_component)
+                        self.selected_component = self.current_component
+
+                        self.current_component = copy.copy(self.current_component)
+                        self.current_component.clear()
+                        self.window_.rule_view.add_rule(self.current_component.RULE)
+
+                        self.selected = {*self.selected_component.indices}
+
+                        self.update()
+                        return
 
             if event.modifiers() == Qt.ControlModifier:
                 self.selected.add(location)
@@ -384,65 +507,77 @@ class SudokuBoard(QWidget):
         cell_x = (event.x() - self.cell_size) % self.cell_size
         cell_y = (event.y() - self.cell_size) % self.cell_size
 
+        grid_col = x // self.cell_size
+        grid_row = y // self.cell_size
+
         if not (0 <= x <= 8 and 0 <= y <= 8):
             return
 
         new_location = y * 9 + x
 
-        not_on_border = (
-                10 <= cell_x <= self.cell_size - 10 and 10 <= cell_y <= self.cell_size - 10)
+        outside_grid = grid_row < 0 or grid_row > 8 or grid_col < 0 or grid_col > 8
 
-        if event.buttons() == Qt.LeftButton and self.border_component is None and not_on_border:
+        threshhold = 15
+        not_on_border = not (
+            (cell_x <= threshhold and cell_y < threshhold)
+            or (cell_x <= threshhold and cell_y >= self.cell_size - threshhold)
+            or (cell_x >= self.cell_size - threshhold and cell_y < threshhold)
+            or (cell_x >= self.cell_size - threshhold and cell_y >= self.cell_size - threshhold)
+        )
+
+        match cmp := self.selected_component:
+
+            case Arrow() | LockoutLine() | BetweenLine() if not outside_grid:
+                if not event.modifiers() == Qt.ShiftModifier:
+                    return
+
+                self.selected = {*cmp.ends}
+
+                if cmp.current_branch is None:
+                    if new_location in cmp.bulb.neighbours and not_on_border:
+                        cmp.branches.append([self.sudoku.board[new_location]])
+
+                        cmp.current_branch = cmp.branches[-1]
+                else:
+                    if cmp.valid_location(new_location) and not_on_border:
+                        cmp.current_branch.append(self.sudoku.board[new_location])
+                        self.update()
+                    else:
+                        if cmp.can_remove(new_location):
+                            cmp.current_branch.remove(cmp.current_branch[-1])
+
+            case PalindromeLine() | GermanWhispersLine() if not outside_grid:
+                if self.selected_component.valid_location(new_location, not_on_border):
+                    self.update()
+
+                    self.selected = {*cmp.ends}
+                    return
+
+            case RegionComponent() if not outside_grid:
+
+                if (new_location in self.selected_component.get_orthogonals()
+                    and self.selected_component.valid_location(new_location)):
+                    self.selected_component.indices.append(new_location)
+
+                if isinstance(self.selected_component, Cage):
+                    self.selected_component.set_min()
+
+                self.update()
+
+                self.selected = {*cmp.indices}
+
+        if event.buttons() == Qt.LeftButton:
             self.selected.add(new_location)
 
         elif event.buttons() == Qt.RightButton and new_location in self.selected:
             self.selected.remove(new_location)
-
         self.update()
 
-        """if self.cell_component is not None and not_on_border:
-
-            for cmp in self.sudoku.lines:
-                if isinstance(cmp, Thermometer) and isinstance(self.cell_component, Thermometer):
-
-                    if cmp is not self.cell_component and new_location == cmp.bulb.index:
-                        return
-
-            if self.cell_component not in self.sudoku.lines:
-                self.sudoku.lines.append(self.cell_component)
-            else:
-                self.cell_component_selected = False
-
-            if new_location not in self.cell_component.indices:
-                if not self.is_orthogonal(new_location, self.cell_component.indices):
-                    return
-                else:
-                    if isinstance(self.cell_component, Thermometer) and len(
-                        self.cell_component.indices) > 8:
-                        return
-
-                self.cell_component.indices.append(new_location)
-                if isinstance(self.cell_component, Thermometer):
-                    self.cell_component.bulb = self.sudoku.board[self.cell_component.indices[0]]
-
-            else:
-                if new_location != self.cell_component.indices[-1]:
-                    return
-
-            self.update()
-
-        self.update()"""
-
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        """if self.cell_component is not None and self.cell_component.indices:
-        if not self.cell_component.check_valid():
-            self.sudoku.lines.remove(self.cell_component)
 
-        if not self.cell_component_selected:
-            self.cell_component = copy.copy(self.cell_component)
-            self.cell_component.indices = []
+        if isinstance(self.selected_component, Arrow | BetweenLine | LockoutLine):
+            self.selected_component.current_branch = None
 
-        self.selected.clear()"""
         self.update()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
@@ -513,7 +648,8 @@ class SudokuBoard(QWidget):
                     self.selected_component.set_value(val)
                     self.update()
                     return
-                elif isinstance(self.selected_component, Sandwich | Cage | LittleKiller | XSumsClue):
+                elif isinstance(self.selected_component,
+                                Sandwich | Cage | LittleKiller | XSumsClue):
                     self.selected_component.increase_total(val)
                     self.update()
                     return
@@ -610,23 +746,23 @@ class SudokuBoard(QWidget):
             if x % self.cell_size <= threshhold and y % self.cell_size <= threshhold:
                 # TOP_LEFT
 
-                if row > 1 and col > 0:
+                if row > 0 and col > 0:
                     return [cell_index - 10, cell_index - 9, cell_index - 1, cell_index]
 
             if x % self.cell_size >= self.cell_size - threshhold and y % self.cell_size <= threshhold:
                 # TOP_RIGHT
-                if row > 1 and col < 8:
+                if row > 0 and col < 8:
                     return [cell_index - 9, cell_index - 8, cell_index, cell_index + 1, ]
 
             if x % self.cell_size <= threshhold \
-                    and y % self.cell_size >= self.cell_size - threshhold:
+                and y % self.cell_size >= self.cell_size - threshhold:
                 # BOTTOM_LEFT
 
                 if row < 8 and col > 0:
                     return [cell_index - 1, cell_index, cell_index + 9, cell_index + 8]
 
             if (x % self.cell_size >= self.cell_size - threshhold
-                    and y % self.cell_size >= self.cell_size - threshhold):
+                and y % self.cell_size >= self.cell_size - threshhold):
                 # BOTTOM_RIGHT
                 if row < 8 and col < 8:
                     return [cell_index, cell_index + 1, cell_index + 9, cell_index + 10]
