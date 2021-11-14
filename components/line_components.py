@@ -130,36 +130,19 @@ class GermanWhispersLine(LineComponent):
         return False
 
     def valid(self, index: int, number: int):
+        if index not in self.indices:
+            return True
+
         if number == 5:
             return False
 
         prev = self.previous_cell(index)
         nxt = self.next_cell(index)
 
-        hit = None
-        for cell in self.cells:
-            if cell.value != 0:
-                hit = cell
-
-        if hit:
-            if hit.value in self.LOWS and hit.index != index:
-                if int(self.distance(hit.index, index)) % 2 == 0 and number not in self.LOWS:
-                    return False
-
-                if int(self.distance(hit.index, index)) % 2 != 0 and number not in self.HIGHS:
-                    return False
-
-            if hit.value in self.HIGHS and hit.index != index:
-                if int(self.distance(hit.index, index)) % 2 == 0 and number not in self.HIGHS:
-                    return False
-
-                if int(self.distance(hit.index, index)) % 2 != 0 and number not in self.LOWS:
-                    return False
-
-        if prev and prev.value != 0 and math.fabs(prev.value - number) < 5:
+        if prev is not None and prev.value != 0 and math.fabs(prev.value - number) < 5:
             return False
 
-        if nxt and nxt.value != 0 and math.fabs(nxt.value - number) < 5:
+        if nxt is not None and nxt.value != 0 and math.fabs(nxt.value - number) < 5:
             return False
 
         return True
@@ -201,8 +184,8 @@ class PalindromeLine(LineComponent):
     def __init__(self, sudoku: "Sudoku", indices: SmartList[int]):
         super().__init__(sudoku, indices)
 
-        self.color = QColor("#CCCCCC")
-        self.thickness = 16.0
+        self.color = QColor("#999999")
+        self.thickness = 10.0
 
         for index in self.indices:
             self.opposite(index)
@@ -245,6 +228,8 @@ class PalindromeLine(LineComponent):
         self.indices = SmartList([])
 
     def valid(self, index: int, number: int):
+        if index not in self.indices:
+            return True
 
         opp = self.opposite(index)
 
@@ -276,15 +261,54 @@ class Thermometer(LineComponent):
     def __init__(self, sudoku: "Sudoku", indices: List[int]):
         super().__init__(sudoku, indices)
 
-        if self.indices:
-            self.bulb = self.sudoku.board[self.indices[0]]
-        else:
-            self.bulb = None
+        self.bulb = None
+        self.branches: List[List[Cell]] = []
+
+        self.current_branch = None
+
+    def clear(self):
+        self.branches = []
+        self.indices = SmartList()
+
+    def setup(self, index: int):
+        self.indices = [index]
+        self.bulb = self.sudoku.board[index]
+        self.branches = []
+
+    def to_json(self):
+        return {
+            "type": self.__class__.__name__,
+            "index": self.bulb.index,
+            "branches": [[c.index for c in branch] for branch in self.branches]
+        }
+
+    def get(self, index: int):
+        for cmp in self.sudoku.lines_components:
+            if isinstance(cmp, Thermometer) and cmp.bulb.index == index:
+                return cmp
+
+    def __eq__(self, other):
+        if isinstance(other, Thermometer):
+            return self.bulb.index == other.bulb.index
+        return False
+
+    def can_remove(self, index: int):
+        if len(self.current_branch) > 1 and index == self.current_branch[-2].index:
+            return True
+        return False
+
+    def valid_location(self, index: int) -> bool:
+        return (
+            index in self.current_branch[-1].neighbours
+            and index != self.bulb.index
+            and index not in [c.index for c in self.current_branch]
+            and len(self.current_branch) < 8
+        )
 
     def __repr__(self):
         return ' -> '.join(map(str, self.indices))
 
-    def ascending(self, number: int, pos: int):
+    """def ascending(self, number: int, pos: int):
         for cell in [c for c in self.cells[pos + 1:] if c.value != 0]:
             if number > cell.value:
                 return False, cell
@@ -338,45 +362,65 @@ class Thermometer(LineComponent):
                 print(number, "NOT ENOUGH SPACE BEFORE")
             return False
 
-        return True
+        return True"""
 
     def valid(self, index: int, number: int) -> bool:
+        for branch in self.branches:
+            if index in [c.index for c in branch]:
+                break
+        else:
+            branch = None
 
-        line_pos = self.position_on_line(index)
+        if branch is None and index != self.bulb.index:
+            return True
 
-        for i in self.indices[line_pos + 1:]:
-            cell = self.sudoku.board[i]
-            if cell.value != 0 and cell.value <= number:
+        if not self.branches:
+            return True
+
+        if index == self.bulb.index:
+
+            if number > 9 - max([len(branch) for branch in self.branches]):
                 return False
 
-        for i in self.indices[:line_pos]:
-            cell = self.sudoku.board[i]
-            if cell.value != 0 and cell.value >= number:
-                return False
+            for branch in self.branches:
+                full = [self.bulb] + branch
 
-        if number < line_pos + 1:
-            return False
-
-        if len(self.indices) - line_pos > 10 - number:
-            return False
-
-        nxt = self.next_cell(index)
-        if nxt and nxt.valid_numbers:
-            if all(number >= vn for vn in nxt.valid_numbers):
-                return False
-
-        prev = None
-        for i in range(line_pos):
-            if self.cells[i].value != 0:
-                prev = self.cells[i]
-
-        if prev:
-            dst = line_pos - self.cells.index(prev)
-            if dst > 1:
-                if number - prev.value < dst:
+                if any([number >= n.value for n in full[1:len(full)] if n.value != 0]):
                     return False
 
-        return True
+            return True
+
+        else:
+            values = [c.value for c in branch]
+
+            if number in values or number == self.bulb.value:
+                return False
+
+            full = [self.bulb] + branch
+
+            indices = [c.index for c in full]
+            pos_on_branch = indices.index(index)
+
+            if any([number <= n.value for n in full[0:pos_on_branch] if n.value != 0]):
+                return False
+
+            if any([number >= n.value for n in full[pos_on_branch + 1:len(full)] if n.value != 0]):
+                return False
+
+            if len(full) == 9:
+                return number == pos_on_branch + 1
+
+            smaller = [i for i in range(1, number)]
+            bigger = [i for i in range(number + 1, 10)]
+            # print(smaller, "<", number, "<", bigger)
+
+            if len(full[pos_on_branch + 1:]) > len(bigger):
+                return False
+
+            if len(full[:pos_on_branch]) > len(smaller):
+                return False
+
+            return True
 
     def check_valid(self):
         if len(self.indices) <= 1 or len(self.indices) > 9:
@@ -385,37 +429,46 @@ class Thermometer(LineComponent):
 
     def draw(self, painter: QPainter, cell_size: int):
 
-        brush = QBrush(QColor("#BBBBBB"))
-        painter.setBrush(brush)
-
-        pen = QPen(QColor("#BBBBBB"), 8.0)
+        pen = QPen(QColor("#CCCCCC"), cell_size / 4)
         pen.setCapStyle(Qt.RoundCap)
         painter.setPen(pen)
 
-        if not self.bulb:
+        if self.bulb is None:
             return
-        row, col = self.bulb.row, self.bulb.column
 
-        painter.drawEllipse(
-            cell_size // 4 + cell_size + col * cell_size - 5,
-            cell_size // 4 + cell_size + row * cell_size - 5,
-            cell_size // 2 + 10, cell_size // 2 + 10
-        )
-
-        pen = QPen(QColor("#BBBBBB"), 20.0)
-        pen.setCapStyle(Qt.RoundCap)
-        painter.setPen(pen)
-
-        for i in range(len(self.cells) - 1):
-            c1 = self.cells[i]
-            c2 = self.cells[i + 1]
+        for branch in self.branches:
+            if not branch:
+                continue
 
             painter.drawLine(
-                cell_size // 2 + cell_size + c1.column * cell_size,
-                cell_size // 2 + cell_size + c1.row * cell_size,
-                cell_size // 2 + cell_size + c2.column * cell_size,
-                cell_size // 2 + cell_size + c2.row * cell_size,
+                self.bulb.rect(cell_size).center(),
+                branch[0].rect(cell_size).center()
             )
+
+        for branch in self.branches:
+            self.draw_path(painter, [c.rect(cell_size).center() for c in branch])
+
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor("#CCCCCC")))
+        painter.drawEllipse(self.bulb.scaled_rect(cell_size, 0.75))
+
+        return
+
+    def get_branch(self, index: int) -> List[Cell]:
+
+        for branch in self.branches:
+            if index in [c.index for c in branch]:
+                return branch
+
+    def delete_branch(self, index: int) -> bool:
+        if (branch := self.get_branch(index)) is not None:
+            self.branches.remove(branch)
+            del branch
+            return True
+        return False
+
+    def can_add_branch(self, index: int):
+        return index in self.bulb.neighbours
 
 
 class Arrow(LineComponent):
@@ -433,7 +486,6 @@ class Arrow(LineComponent):
         self.current_branch = None
 
     def get(self, index: int):
-
         for cmp in self.sudoku.lines_components:
             if isinstance(cmp, Arrow) and cmp.bulb.index == index:
                 return cmp
@@ -456,6 +508,9 @@ class Arrow(LineComponent):
 
     def sum_so_far(self):
         return sum([c.value for c in self.cells[self.bulb.index:] if c.value != 0])
+
+    def can_add_branch(self, index: int):
+        return index in self.bulb.neighbours
 
     def get_branch(self, index: int) -> List[Cell]:
 
@@ -496,7 +551,7 @@ class Arrow(LineComponent):
 
     @property
     def arrow_cells(self) -> Optional[List[Cell]]:
-        return self.cells[self.bulb.index + 1:]
+        return self.cells[:1]
 
     def can_create(self, click_x: int, click_y: int) -> bool:
         return len(self.cells) > 1
@@ -507,17 +562,17 @@ class Arrow(LineComponent):
 
     @property
     def unique(self):
-        for cell in self.arrow_cells:
-            for other in self.arrow_cells:
-                if cell == other:
-                    continue
-                if other not in self.sudoku.sees(cell.index):
-                    return False
+        for branch in self.branches:
+            for cell in branch:
+                for other in branch:
+                    if cell == other:
+                        continue
+                    if other not in self.sudoku.sees(cell.index):
+                        return False
         return True
 
     def valid(self, index: int, number: int):
-
-        if self.position_on_line(index) == self.bulb:
+        if index == self.bulb.index:
 
             if self.unique:
                 return number >= sum_first_n(len(self.arrow_cells))
@@ -633,6 +688,9 @@ class BetweenLine(LineComponent):
             if isinstance(cmp, BetweenLine) and cmp.bulb.index == index:
                 return cmp
 
+    def can_add_branch(self, index: int):
+        return index in self.bulb.neighbours
+
     def to_json(self):
         return {
             "type": self.__class__.__name__,
@@ -718,8 +776,9 @@ class BetweenLine(LineComponent):
 class LockoutLine(LineComponent):
     NAME = "Lockout Line"
 
-    RULE = ("Numbers on a line with 2 diamonds at its end cannot be between the numbers in these diamonds."
-            " Additionally numbers in directly connected diamonds have a difference of at least 4.")
+    RULE = (
+        "Numbers on a line with 2 diamonds at its end cannot be between the numbers in these diamonds."
+        " Additionally numbers in directly connected diamonds have a difference of at least 4.")
 
     LAYER = 6
 
@@ -758,6 +817,9 @@ class LockoutLine(LineComponent):
         self.indices = [index]
         self.bulb = self.sudoku.board[index]
         self.branches = []
+
+    def can_add_branch(self, index: int):
+        return index in self.bulb.neighbours
 
     @property
     def bulbs(self):

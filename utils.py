@@ -9,7 +9,7 @@ from PySide6.QtGui import QColor, QPainter
 
 
 def n_digit_sums(amount: int, target: int,
-                 allowed_digits: Tuple[int] = (1, 2, 3, 4, 5, 6, 7, 8, 9)):
+                 allowed_digits: Tuple[int,...] = (1, 2, 3, 4, 5, 6, 7, 8, 9)):
     """
 
     :param allowed_digits: Digits that can be used in the sum, usually 1 to 9 including both

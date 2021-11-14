@@ -343,7 +343,8 @@ class XVSum(BorderComponent):
                 rect_size
             )
 
-        painter.setFont(QFont("Asap", cell_size // 4 if self.total != 15 else cell_size // 7, QFont.Bold))
+        painter.setFont(
+            QFont("Asap", cell_size // 4 if self.total != 15 else cell_size // 7, QFont.Bold))
         painter.setPen(QPen(QColor(0, 0, 0), 1.0))
 
         text = "V" if self.total == 5 else "X" if self.total == 10 else "XV"
@@ -376,10 +377,17 @@ class LessGreater(BorderComponent):
 
     def valid(self, index: int, number: int):
 
-        if self.other_cell(index).value == 0:
-            return True
         other = self.other_cell(index)
         position = self.pos(index)
+
+        if self.other_cell(index).value == 0:
+            if self.less and position == 0 and number == 9:
+                return False
+
+            if not self.less and position == 0 and number == 1:
+                return False
+
+            return True
 
         if self.less:
 
@@ -421,7 +429,6 @@ class LessGreater(BorderComponent):
         if c1.column == c2.column:  # ABOVE EACH OTHER
 
             if self.less:  # POINTING UP
-
 
                 painter.drawLine(
                     border_center.x(),
@@ -509,11 +516,11 @@ class Quadruple(BorderComponent):
 
     def setup(self, selected: List[int]):
         self.indices = selected
-        self.numbers = SmartList([], max_length=4)
+        self.numbers = SmartList([], max_length=4, sort_=True)
 
     def clear(self):
         self.indices = []
-        self.numbers = SmartList([], max_length=4)
+        self.numbers = SmartList([], max_length=4, sort_=True)
 
     def empties(self) -> List[Cell]:
         return [cell for cell in self.cells if cell.value == 0]

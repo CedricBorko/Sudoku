@@ -9,7 +9,7 @@ from PySide6.QtGui import QPainter, QPen, QColor, QFont
 
 from components.border_components import Component
 from sudoku import Cell, tile_to_poly
-from utils import SmartList, sum_first_n
+from utils import SmartList, sum_first_n, n_digit_sums
 
 
 class RegionComponent(Component, ABC):
@@ -35,7 +35,6 @@ class RegionComponent(Component, ABC):
 
 class Clone(RegionComponent):
     NAME = "Clone"
-
 
     def __init__(self, sudoku: "Sudoku", indices: SmartList[int], partner: bool = False):
         super().__init__(sudoku, indices)
@@ -129,34 +128,39 @@ class Cage(RegionComponent):
             if index in cmp.indices:
                 return cmp
 
-    def valid(self, board: List[Cell], number: int, show_constraint: bool = False) -> bool:
+    def valid(self, index: int, number: int) -> bool:
+        if self.total is None:
+            return True
 
-        if number >= self.total and len(self.cells) > 1:
+        if index not in self.indices:
+            return True
+
+        if number in [c.value for c in self.cells]:
             return False
 
-        sum_so_far = sum(cell.value for cell in board if cell.index in self.cells)
-
-        if sum_so_far + number > self.total:
-            if show_constraint:
-                print(number, f"WOULD EXCEED THE TOTAL ({self.total}) OF THIS CAGE")
+        sums = n_digit_sums(
+            len([c for c in self.cells if c.value == 0]),
+            self.total - sum([c.value for c in self.cells if c.value != 0]),
+            tuple(i for i in range(1, 10) if i not in [c.value for c in self.cells])
+        )
+        if not any(number in s for s in sums):
             return False
 
-        if number in [cell.value for cell in board if cell.index in self.cells] and self.no_repeat:
-            if show_constraint:
-                print(number, f"ALREADY IN CAGE")
+        if len(self.cells) == 1:
+            return number == self.total
+
+        if len([c.value for c in self.cells if c.value == 0]) == 0:
             return False
 
-        if self.space_left(board) == 1 and number + sum_so_far < self.total:
-            if show_constraint:
-                print("USING", number,
-                      f"WOULD ONLY REACH {sum_so_far + number} NOT THE TOTAL ({self.total}) OF THIS CAGE")
-            return False
+        if len([c.value for c in self.cells if c.value == 0]) == 1:
+            return sum([c.value for c in self.cells if c.value != 0]) + number == self.total
+        else:
+            return sum([c.value for c in self.cells if c.value != 0]) + number < self.total
 
-        return True
 
     def clear(self):
         self.indices = SmartList(max_length=9)
-        self.total = 1
+        self.total = None
 
     def space_left(self, board: List[Cell]) -> int:
         return len([cell for cell in board if cell.index in self.cells and cell.value == 0])

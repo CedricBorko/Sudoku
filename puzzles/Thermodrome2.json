@@ -1,0 +1,198 @@
+{
+  "digits": "000000000000000000000000400000000000000000000000000000004000000000000000000000006",
+  "constraints": {
+    "diagonal_positive": false,
+    "diagonal_negative": true,
+    "antiknight": false,
+    "antiking": false,
+    "disjoint_groups": false,
+    "nonconsecutive": false
+  },
+  "negative_constraints": {
+    "ratio": false,
+    "XV": false
+  },
+  "components": {
+    "lines": [
+      {
+        "type": "PalindromeLine",
+        "indices": [
+          33,
+          23
+        ]
+      },
+      {
+        "type": "Thermometer",
+        "index": 56,
+        "branches": [
+          [
+            66
+          ],
+          [
+            46
+          ]
+        ]
+      },
+      {
+        "type": "Thermometer",
+        "index": 19,
+        "branches": [
+          [
+            27
+          ],
+          [
+            11
+          ]
+        ]
+      },
+      {
+        "type": "Thermometer",
+        "index": 20,
+        "branches": [
+          [
+            28,
+            36
+          ],
+          [
+            12,
+            4
+          ]
+        ]
+      },
+      {
+        "type": "Thermometer",
+        "index": 30,
+        "branches": [
+          [
+            38
+          ],
+          [
+            22
+          ]
+        ]
+      },
+      {
+        "type": "Thermometer",
+        "index": 50,
+        "branches": [
+          [
+            58
+          ],
+          [
+            42
+          ]
+        ]
+      },
+      {
+        "type": "Thermometer",
+        "index": 60,
+        "branches": [
+          [
+            68,
+            76
+          ],
+          [
+            52,
+            44
+          ]
+        ]
+      },
+      {
+        "type": "Thermometer",
+        "index": 24,
+        "branches": [
+          [
+            14
+          ],
+          [
+            34
+          ]
+        ]
+      },
+      {
+        "type": "PalindromeLine",
+        "indices": [
+          42,
+          50,
+          58
+        ]
+      },
+      {
+        "type": "PalindromeLine",
+        "indices": [
+          44,
+          52,
+          60,
+          68,
+          76
+        ]
+      },
+      {
+        "type": "PalindromeLine",
+        "indices": [
+          46,
+          56,
+          66
+        ]
+      },
+      {
+        "type": "PalindromeLine",
+        "indices": [
+          22,
+          30,
+          38
+        ]
+      },
+      {
+        "type": "PalindromeLine",
+        "indices": [
+          34,
+          24,
+          14
+        ]
+      },
+      {
+        "type": "PalindromeLine",
+        "indices": [
+          4,
+          12,
+          20,
+          28,
+          36
+        ]
+      },
+      {
+        "type": "PalindromeLine",
+        "indices": [
+          11,
+          19,
+          27
+        ]
+      }
+    ],
+    "border": [],
+    "cells": [],
+    "regions": [
+      {
+        "type": "Cage",
+        "indices": [
+          31,
+          40,
+          49,
+          39,
+          41
+        ],
+        "total": 15
+      }
+    ],
+    "outside": [
+      {
+        "type": "LittleKiller",
+        "row": 6,
+        "col": 0,
+        "total": 14,
+        "direction": 0
+      }
+    ]
+  }
+}

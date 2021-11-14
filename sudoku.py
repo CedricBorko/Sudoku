@@ -6,7 +6,7 @@ import os
 import time
 from typing import List, Optional, Set
 
-from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtCore import QPoint, QRect, Qt, QThread, QObject
 from PySide6.QtGui import QPainter, QPolygon, QColor
 from PySide6.QtWidgets import QFileDialog
 
@@ -489,7 +489,7 @@ class Sudoku:
         self.region_components = SmartList()
         self.outside_components = SmartList()
 
-        self.brute_force_time = 20
+        self.brute_force_time = 60
 
     @property
     def components(self):
@@ -550,8 +550,11 @@ class Sudoku:
 
         path, extension = QFileDialog.getOpenFileName(dir=os.getcwd(), filter="(*.json)")
 
-        for component_list in self.components:
-            component_list.clear()
+        self.lines_components.clear()
+        self.border_components.clear()
+        self.cell_components.clear()
+        self.region_components.clear()
+        self.outside_components.clear()
 
         with open(path, "r") as file:
             data = json.load(file)
@@ -612,6 +615,15 @@ class Sudoku:
 
                         self.lines_components.append(obj)
 
+                    case "Thermometer":
+                        obj = line_components.Thermometer(self, SmartList())
+                        obj.setup(item["index"])
+
+                        for branch in item["branches"]:
+                            obj.branches.append([self.board[ix] for ix in branch])
+
+                        self.lines_components.append(obj)
+
                     case "LockoutLine":
                         obj = line_components.LockoutLine(self, SmartList())
                         obj.setup(item["index"])
@@ -635,7 +647,7 @@ class Sudoku:
                         self.lines_components.append(obj)
 
                     case "GermanWhispersLine":
-                        obj = line_components.GermanWhispersLine(self,  SmartList(item["indices"]))
+                        obj = line_components.GermanWhispersLine(self, SmartList(item["indices"]))
                         self.lines_components.append(obj)
 
             for item in data["components"]["outside"]:
@@ -657,7 +669,7 @@ class Sudoku:
 
             for item in data["components"]["regions"]:
                 match item["type"]:
-                    case Cage:
+                    case "Cage":
                         self.region_components.append(region_components.Cage.from_json(self, item))
 
     @classmethod
@@ -717,6 +729,9 @@ class Sudoku:
         start = box_x + box_y
         box = [board_to_search[start + i * 9: start + 3 + i * 9] for i in range(3)]
         return list(itertools.chain(*box))
+
+    def get_zones(self, index: int):
+        return self.get_entire_row(index) + self.get_entire_column(index) + self.get_entire_box(index)
 
     def get_king_neighbours(self, index: int):
         board_to_search = self.board if self.solve_board else self.board_copy
@@ -876,19 +891,22 @@ class Sudoku:
         for cell in self.board:
             cell.valid_numbers = self.valid_numbers(cell.index)
 
-    def try_solve(self):
+    def try_solve(self, thread):
         before = copy.deepcopy(self.board)
-        possible = self.solve()
+        possible = self.solve(thread)
 
         self.board = before
         return possible
 
-    def solve(self):
+    def solve(self, thread: QObject = None):
         if self.brute_force_time == 0:
             return False
 
         self.calculate_valid_numbers()
         index = self.next_empty()
+        if thread is not None:
+            thread.progressChanged.emit()
+            time.sleep(1 / thread.speed)
 
         if index is None:
             return True
@@ -898,7 +916,7 @@ class Sudoku:
         for number in cell.valid_numbers:
             cell.value = number
 
-            if self.solve():
+            if self.solve(thread):
                 return True
 
             cell.value = 0
@@ -907,29 +925,6 @@ class Sudoku:
     def valid(self, number: int, index: int, show_constraints: bool = False):
 
         show_constraint = show_constraints
-
-        for cell in self.get_entire_row(index):
-            if cell.value == number:
-                if show_constraint: print(number, "TWICE IN ROW", cell.row)
-                return False
-
-        for cell in self.get_entire_column(index):
-            if cell.value == number:
-                if show_constraint: print(number, "TWICE IN COLUMN", cell.column)
-                return False
-
-        for cell in self.get_entire_box(index):
-            if cell.value == number:
-                if show_constraint: print(number, "TWICE IN BOX")
-
-                return False
-
-        for cell_cmp in self.cell_components:
-            if index != cell_cmp.index:
-                continue
-
-            if not cell_cmp.valid(index, number):
-                return False
 
         if self.disjoint_groups:
             this_box = self.get_entire_box(index)
@@ -995,8 +990,6 @@ class Sudoku:
                         return False
 
         for line in self.lines_components:
-            if index not in line.indices: continue
-
             if not line.valid(index, number):
                 return False
 
@@ -1008,6 +1001,32 @@ class Sudoku:
 
         for out_cmp in self.outside_components:
             if not out_cmp.valid(index, number):
+                return False
+
+        for reg_cmp in self.region_components:
+            if not reg_cmp.valid(index, number):
+                return False
+
+        for cell in self.get_entire_row(index):
+            if cell.value == number:
+                if show_constraint: print(number, "TWICE IN ROW", cell.row)
+                return False
+
+        for cell in self.get_entire_column(index):
+            if cell.value == number:
+                if show_constraint: print(number, "TWICE IN COLUMN", cell.column)
+                return False
+
+        for cell in self.get_entire_box(index):
+            if cell.value == number:
+                if show_constraint: print(number, "TWICE IN BOX")
+                return False
+
+        for cell_cmp in self.cell_components:
+            if index != cell_cmp.index:
+                continue
+
+            if not cell_cmp.valid(index, number):
                 return False
 
         return True

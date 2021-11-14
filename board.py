@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import copy
+import time
 from typing import List
 
-from PySide6.QtCore import QRect, Qt, QPoint
+from PySide6.QtCore import QRect, Qt, QPoint, QObject, Signal, QThread
 from PySide6.QtGui import QPaintEvent, QPainter, QPen, QColor, QMouseEvent, QFont, \
     QKeyEvent, QBrush, QResizeEvent
 from PySide6.QtWidgets import QWidget, QSizePolicy
@@ -12,7 +13,7 @@ from components.border_components import XVSum, Quadruple, BorderComponent, Diff
     LessGreater
 from components.cell_components import OddDigit, EvenDigit, CellComponent
 from components.line_components import Arrow, LineComponent, PalindromeLine, GermanWhispersLine, \
-    BetweenLine, LockoutLine
+    BetweenLine, LockoutLine, Thermometer
 from components.outside_components import Sandwich, XSumsClue, LittleKiller, OutsideComponent
 from components.region_components import RegionComponent, Cage, Clone
 from sudoku import Sudoku
@@ -27,18 +28,33 @@ WEST = 3
 SELECTION_COLOR = QColor("#01C4FF")
 
 COLORS = [
-    QColor("#6495ED"),  # Blue
-    QColor("#FA8072"),  # Red
-    QColor("#98fc03"),  # Green
+    QColor("#88C1F2"),  # Blue
+    QColor("#F29494"),  # Red
+    QColor("#DCF2AC"),  # Green
 
-    QColor("#C57FFF"),  # Purple
-    QColor("#FFA500"),  # Orange
-    QColor("#FCC603"),  # YELLOW
+    QColor("#EAAEF2"),  # Purple
+    QColor("#F2AB91"),  # Orange
+    QColor("#F2DC99"),  # YELLOW
 
     QColor("#BBBBBB"),  # Light Gray
     QColor("#666666"),  # Dark Gray
     QColor("#000000")  # Black
 ]
+
+
+class Solver(QObject):
+    progressChanged = Signal()
+    finished = Signal()
+
+    def __init__(self, sudoku):
+        super().__init__()
+
+        self.sudoku = sudoku
+        self.speed = 50
+
+    def solve(self):
+        self.sudoku.solve(self)
+        self.finished.emit()
 
 
 class SudokuBoard(QWidget):
@@ -76,20 +92,45 @@ class SudokuBoard(QWidget):
         self.v_pressed = False
 
         self.cell_component_selected = False
+        self.solver = Solver(self.sudoku)
+        self.thread_ = QThread(self.solver)
+
+    def onProgressChanged(self):
+        self.update()
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         self.setFixedWidth(self.height())
         self.cell_size = self.height() // 11
         self.update()
 
-    def solve_board(self):
-        self.sudoku.brute_force_time = 20
-        self.sudoku.start_process()
+    def set_speed(self):
+        self.solver.speed = self.window_.speed_slider.value()
 
-        self.sudoku.solve()
-        self.unsolved = False
+    def solve_board(self):
+        self.sudoku.brute_force_time = 60
+        if self.window_.step_by_step_solve.isChecked():
+            self.solver.progressChanged.connect(self.onProgressChanged)
+            self.solver.moveToThread(self.thread_)
+            self.thread_.started.connect(self.solver.solve)
+            self.solver.finished.connect(self.tidy_up_thread)
+            self.thread_.start()
+            self.unsolved = False
+        else:
+            self.sudoku.solve()
+            self.sudoku.start_process()
 
         self.update()
+
+    def tidy_up_thread(self):
+        self.thread_.quit()
+        self.thread_.wait()
+
+    def next_step(self):
+        self.sudoku.calculate_valid_numbers()
+        self.selected = {sorted([c for c in self.sudoku.board if c.value == 0],
+                                key=lambda cell: len(cell.valid_numbers))[0].index}
+        self.update()
+        self.setFocus()
 
     def clear_grid(self):
         for i in range(81):
@@ -424,7 +465,7 @@ class SudokuBoard(QWidget):
                     if event.modifiers() == Qt.ControlModifier:
                         if (self.selected_component is not None
                             and not isinstance(self.selected_component,
-                                               Arrow | BetweenLine | LockoutLine)):
+                                               Arrow | BetweenLine | LockoutLine | Thermometer)):
                             if self.selected_component.valid_location(location, not_on_border):
                                 self.update()
                                 self.selected = {*self.selected_component.ends}
@@ -441,7 +482,8 @@ class SudokuBoard(QWidget):
                         return
 
                     if event.modifiers() == Qt.NoModifier:
-                        if isinstance(self.selected_component, Arrow | LockoutLine | BetweenLine):
+                        if isinstance(self.selected_component,
+                                      Arrow | LockoutLine | BetweenLine | Thermometer):
                             if self.selected_component.delete_branch(location):
                                 self.update()
                                 self.selected.clear()
@@ -527,17 +569,16 @@ class SudokuBoard(QWidget):
 
         match cmp := self.selected_component:
 
-            case Arrow() | LockoutLine() | BetweenLine() if not outside_grid:
+            case Arrow() | LockoutLine() | BetweenLine() | Thermometer() if not outside_grid:
                 if not event.modifiers() == Qt.ShiftModifier:
                     return
 
                 self.selected = {*cmp.ends}
-
                 if cmp.current_branch is None:
-                    if new_location in cmp.bulb.neighbours and not_on_border:
+                    if cmp.can_add_branch(new_location) and not_on_border:
                         cmp.branches.append([self.sudoku.board[new_location]])
-
                         cmp.current_branch = cmp.branches[-1]
+
                 else:
                     if cmp.valid_location(new_location) and not_on_border:
                         cmp.current_branch.append(self.sudoku.board[new_location])
@@ -559,8 +600,6 @@ class SudokuBoard(QWidget):
                     and self.selected_component.valid_location(new_location)):
                     self.selected_component.indices.append(new_location)
 
-                if isinstance(self.selected_component, Cage):
-                    self.selected_component.set_min()
 
                 self.update()
 
@@ -575,7 +614,7 @@ class SudokuBoard(QWidget):
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
 
-        if isinstance(self.selected_component, Arrow | BetweenLine | LockoutLine):
+        if isinstance(self.selected_component, Arrow | BetweenLine | LockoutLine | Thermometer):
             self.selected_component.current_branch = None
 
         self.update()

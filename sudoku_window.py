@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt, QEvent
 from PySide6.QtGui import QCursor, QMouseEvent, QIcon, QResizeEvent, QEnterEvent, QAction
 from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QFrame, QHBoxLayout, QPushButton, \
     QWidget, QSizeGrip, QComboBox, QGridLayout, QMenu, QSizePolicy, QCheckBox, QApplication, \
-    QLineEdit, QLabel, QTextEdit
+    QLineEdit, QLabel, QTextEdit, QSlider
 
 from board import SudokuBoard
 from components.cell_components import EvenDigit, OddDigit
@@ -91,7 +91,12 @@ class SudokuWindow(QMainWindow):
         self.constraints_menu = ConstraintsMenu(self)
         self.component_menu = ComponentMenu(self)
 
+        self.step_btn = QPushButton("Next step")
+
         self.rule_view = RuleView()
+        self.speed_slider = QSlider(Qt.Horizontal)
+        self.speed_slider.setRange(1, 100)
+        self.speed_slider.setValue(50)
 
         ############################################################################################
 
@@ -104,10 +109,14 @@ class SudokuWindow(QMainWindow):
         self.clear_btn.clicked.connect(self.board.clear_grid)
         self.save_btn.clicked.connect(self.sudoku.to_file)
         self.load_btn.clicked.connect(self.load_sudoku)
+        self.step_btn.clicked.connect(self.board.next_step)
+        self.speed_slider.valueChanged.connect(self.board.set_speed)
 
         self.mode_switch.currentIndexChanged.connect(
             lambda: self.board.setFocus()
         )
+
+        self.step_by_step_solve = QCheckBox("Step by Step")
 
         self.content_layout = QGridLayout()
         self.content_layout.setContentsMargins(10, 10, 10, 10)
@@ -130,9 +139,12 @@ class SudokuWindow(QMainWindow):
         self.settings_layout.addWidget(self.component_menu, 0, 2, 2, 2)
         self.settings_layout.addWidget(self.mode_switch, 2, 2, 1, 1)
         self.settings_layout.addWidget(self.solve_btn, 2, 0, 1, 2)
+        self.settings_layout.addWidget(self.step_btn, 3, 2, 1, 1)
+        self.settings_layout.addWidget(self.step_by_step_solve, 3, 3, 1, 1)
         self.settings_layout.addWidget(self.clear_btn, 3, 0, 1, 2)
         self.settings_layout.addWidget(self.save_btn, 4, 0, 1, 2)
         self.settings_layout.addWidget(self.load_btn, 4, 2, 1, 2)
+        self.settings_layout.addWidget(self.speed_slider, 5, 0, 1, 4)
 
         self.settings_layout.addWidget(self.highlight_cells_box, 2, 3, 1, 1)
 
