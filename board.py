@@ -9,13 +9,13 @@ from PySide6.QtGui import QPaintEvent, QPainter, QPen, QColor, QMouseEvent, QFon
     QKeyEvent, QBrush, QResizeEvent
 from PySide6.QtWidgets import QWidget, QSizePolicy
 
-from components.border_components import XVSum, Quadruple, BorderComponent, Difference, Ratio, \
+from constraints.border_components import XVSum, Quadruple, BorderComponent, Difference, Ratio, \
     LessGreater
-from components.cell_components import OddDigit, EvenDigit, CellComponent
-from components.line_components import Arrow, LineComponent, PalindromeLine, GermanWhispersLine, \
+from constraints.cell_components import OddDigit, EvenDigit, CellComponent
+from constraints.line_components import Arrow, LineComponent, PalindromeLine, GermanWhispersLine, \
     BetweenLine, LockoutLine, Thermometer
-from components.outside_components import Sandwich, XSumsClue, LittleKiller, OutsideComponent
-from components.region_components import RegionComponent, Cage, Clone
+from constraints.outside_components import Sandwich, XSumsClue, LittleKiller, OutsideComponent
+from constraints.region_components import RegionComponent, Cage, Clone
 from sudoku import Sudoku
 from sudoku import tile_to_poly
 from utils import SmartList

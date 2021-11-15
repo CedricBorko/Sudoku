@@ -5,7 +5,7 @@ from typing import List, Tuple, Optional
 from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QPolygon
 
-from components.border_components import Component
+from constraints.border_components import Component
 from sudoku import Sudoku, Cell
 from utils import smallest_sum_including_x, sum_first_n, SmartList
 

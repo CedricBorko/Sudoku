@@ -7,13 +7,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCheckBox, QFrame, QVBoxLayout, QPushButton, \
     QButtonGroup, QSizePolicy, QHBoxLayout, QGridLayout
 
-from components.border_components import XVSum, LessGreater, Quadruple, BorderComponent, Ratio, \
+from constraints.border_components import XVSum, LessGreater, Quadruple, BorderComponent, Ratio, \
     Difference, Component
-from components.cell_components import OddDigit, EvenDigit
-from components.line_components import LineComponent, GermanWhispersLine, Thermometer, \
+from constraints.cell_components import OddDigit, EvenDigit
+from constraints.line_components import LineComponent, GermanWhispersLine, Thermometer, \
     PalindromeLine, Arrow, BetweenLine, LockoutLine
-from components.region_components import RegionComponent, Cage, Clone
-from components.outside_components import Sandwich, XSumsClue, LittleKiller, OutsideComponent
+from constraints.region_components import RegionComponent, Cage, Clone
+from constraints.outside_components import Sandwich, XSumsClue, LittleKiller, OutsideComponent
 from utils import SmartList
 
 

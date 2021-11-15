@@ -74,7 +74,6 @@ class BorderComponent(Component):
         pass
 
     def get(self, selected_indices: List[int]) -> BorderComponent:
-
         for cmp in self.sudoku.border_components:
             if sorted(cmp.indices) == sorted(selected_indices):
                 return cmp

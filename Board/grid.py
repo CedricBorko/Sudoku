@@ -2,11 +2,8 @@ from __future__ import annotations
 
 import copy
 import random
-import time
 from abc import ABC, abstractmethod
-from collections import namedtuple
-from enum import Enum
-from typing import List, Tuple, NamedTuple
+from typing import List, Tuple
 
 UP_LEFT = (-1, -1)
 UP_RIGHT = (-1, 1)
@@ -97,6 +94,13 @@ class Grid:
 
         return cells
 
+    def apply_base_constraints(self):
+        for cell in self.cells:
+            if cell.empty:
+                for number in cell.untested:
+                    if not self.is_valid(cell.index, number):
+                        cell.untested.remove(number)
+
     @staticmethod
     def values(cells: List[Cell]) -> List[int]:
         return [cell.value for cell in cells]
@@ -147,7 +151,7 @@ class Grid:
     def calculate_valid_numbers(self):
         for cell in self.cells:
             if not cell.empty: continue
-            cell.untested = self.valid_numbers(cell.index)
+            cell.candidates = self.valid_numbers(cell.index)
 
     def valid_numbers(self, index: int):
         return [number for number in range(1, 10) if self.is_valid(index, number)]
@@ -160,7 +164,7 @@ class Grid:
         if next_cell is None:
             return True
 
-        for n in next_cell.untested:
+        for n in next_cell.candidates:
             if self.is_valid(next_cell.index, n, echo):
                 next_cell.value = n
                 if self.solve(echo):
@@ -182,8 +186,8 @@ class Cell:
         self.index = index
         self.value = -1
 
-        self.pencil_center = set()
-        self.penicl_corner = set()
+        self.candidates = set()
+        self.pencil_corner = set()
         self.colors = set()
 
         self.tested_numbers = set()
@@ -192,8 +196,8 @@ class Cell:
     def clear(self):
         self.value = -1
 
-        self.pencil_center.clear()
-        self.penicl_corner.clear()
+        self.candidates.clear()
+        self.pencil_corner.clear()
         self.colors.clear()
 
         self.tested_numbers.clear()
@@ -288,8 +292,6 @@ if __name__ == '__main__':
         if val != "-":
             g.set(i, int(val))
 
-    g.diagonal_negative = True
     g.calculate_valid_numbers()
-
-    g.solve()
     print(g)
+

@@ -3,7 +3,7 @@ from typing import List
 from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QFont, QImage
 
-from components.border_components import Component, LessGreater
+from constraints.border_components import Component, LessGreater
 
 
 class CellComponent(Component):

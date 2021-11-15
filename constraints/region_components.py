@@ -7,7 +7,7 @@ from typing import List, Dict
 from PySide6.QtCore import Qt, QRect, QPoint, QSize
 from PySide6.QtGui import QPainter, QPen, QColor, QFont
 
-from components.border_components import Component
+from constraints.border_components import Component
 from sudoku import Cell, tile_to_poly
 from utils import SmartList, sum_first_n, n_digit_sums
 

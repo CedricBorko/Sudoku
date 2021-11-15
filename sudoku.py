@@ -529,7 +529,7 @@ class Sudoku:
                 "ratio": False,
                 "XV": False
             },
-            "components": {
+            "constraints": {
                 "lines": [line.to_json() for line in self.lines_components],
                 "border": [cmp.to_json() for cmp in self.border_components],
                 "cells": [cell_cmp.to_json() for cell_cmp in self.cell_components],
@@ -545,7 +545,7 @@ class Sudoku:
     def from_file(self):
         import json
 
-        from components import border_components, cell_components, outside_components, \
+        from constraints import border_components, cell_components, outside_components, \
             line_components, region_components
 
         path, extension = QFileDialog.getOpenFileName(dir=os.getcwd(), filter="(*.json)")
@@ -568,7 +568,7 @@ class Sudoku:
             for key, val in data["constraints"].items():
                 setattr(self, key, val)
 
-            for item in data["components"]["border"]:
+            for item in data["constraints"]["border"]:
                 match item["type"]:
 
                     case "XVSum":
@@ -592,7 +592,7 @@ class Sudoku:
 
                 self.border_components.append(obj)
 
-            for item in data["components"]["cells"]:
+            for item in data["constraints"]["cells"]:
                 match item["type"]:
 
                     case "EvenDigit":
@@ -603,7 +603,7 @@ class Sudoku:
                         obj = cell_components.OddDigit(self, item["index"])
                         self.cell_components.append(obj)
 
-            for item in data["components"]["lines"]:
+            for item in data["constraints"]["lines"]:
                 match item["type"]:
 
                     case "Arrow":
@@ -650,7 +650,7 @@ class Sudoku:
                         obj = line_components.GermanWhispersLine(self, SmartList(item["indices"]))
                         self.lines_components.append(obj)
 
-            for item in data["components"]["outside"]:
+            for item in data["constraints"]["outside"]:
                 match item["type"]:
                     case "Sandwich":
                         obj = outside_components.Sandwich(self, item["col"], item["row"],
@@ -667,7 +667,7 @@ class Sudoku:
                                                               item["total"], item["direction"])
                         self.outside_components.append(obj)
 
-            for item in data["components"]["regions"]:
+            for item in data["constraints"]["regions"]:
                 match item["type"]:
                     case "Cage":
                         self.region_components.append(region_components.Cage.from_json(self, item))

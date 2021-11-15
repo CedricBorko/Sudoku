@@ -7,10 +7,10 @@ from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QFrame, QHBoxLayout, QPu
     QLineEdit, QLabel, QTextEdit, QSlider
 
 from board import SudokuBoard
-from components.cell_components import EvenDigit, OddDigit
-from components.line_components import Arrow, LockoutLine, BetweenLine, PalindromeLine
-from components.outside_components import Sandwich
-from components.region_components import Cage
+from constraints.cell_components import EvenDigit, OddDigit
+from constraints.line_components import Arrow, LockoutLine, BetweenLine, PalindromeLine
+from constraints.outside_components import Sandwich
+from constraints.region_components import Cage
 from menus import ConstraintsMenu, ComponentMenu
 from sudoku import Sudoku
 from utils import monitor_size, SmartList
