@@ -27,7 +27,6 @@ class ComponentMenu(QFrame):
         self.toggle_btn = QPushButton("Toggle Components")
         self.toggle_btn.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         self.toggle_btn.setFixedHeight(40)
-        self.toggle_btn.setFixedWidth(400)
         self.toggle_btn.clicked.connect(self.toggle_buttons)
 
         self.component_group = QButtonGroup()
@@ -41,7 +40,6 @@ class ComponentMenu(QFrame):
 
         self.digit_btn = QPushButton("Digits")
         self.digit_btn.setFixedHeight(40)
-        self.digit_btn.setFixedWidth(400)
         self.digit_btn.setCheckable(True)
         self.digit_btn.setChecked(True)
         self.digit_btn.clicked.connect(self.uncheck)

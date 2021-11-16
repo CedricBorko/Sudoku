@@ -106,6 +106,18 @@ class SudokuBoard(QWidget):
     def set_speed(self):
         self.solver.speed = self.window_.speed_slider.value()
 
+    def set_value(self, value: int):
+        self.steps_done.append(copy.deepcopy(self.sudoku.board))
+        mode = self.mode_switch.currentIndex()
+        for index in self.selected:
+            cell = self.sudoku.board[index]
+
+            if mode == 0 and self.sudoku.initial_state[index].value != 0:
+                continue
+            else:
+                cell.set_values(mode, value, COLORS)
+        self.update()
+
     def solve_board(self):
         self.sudoku.brute_force_time = 60
         if self.window_.step_by_step_solve.isChecked():

@@ -19,9 +19,6 @@ class Grid:
 
         self.initial = copy.deepcopy(self.cells)
 
-        self.undo_stack: List[Move] = []
-        self.redo_stack: List[Move] = []
-
         self.diagonal_positive = False
         self.diagonal_negative = False
 
@@ -238,42 +235,6 @@ class Cell:
 
     def __str__(self):
         return f"{self.value if self.value != -1 else '-'}"
-
-
-class Move(ABC):
-    def __init__(self, grid: Grid, cell_index: int):
-        self.grid = grid
-        self.cell_index = cell_index
-
-    @abstractmethod
-    def execute(self) -> None:
-        pass
-
-    def undo(self) -> None:
-        pass
-
-    def redo(self) -> None:
-        pass
-
-
-class ValueMove(Move):
-    def __init__(self, grid: Grid, cell_index: int, value: int):
-        super().__init__(grid, cell_index)
-
-        self.from_value = self.grid.cells[cell_index].value
-        self.value = value
-
-    def __repr__(self):
-        return f"Change Cell {self.cell_index}'s value from {self.from_value} to {self.value}."
-
-    def execute(self) -> None:
-        self.grid.cells[self.cell_index].value = self.value
-
-    def undo(self) -> None:
-        self.grid.cells[self.cell_index].value = self.from_value
-
-    def redo(self) -> None:
-        self.grid.cells[self.cell_index].value = self.value
 
 
 if __name__ == '__main__':

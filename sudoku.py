@@ -3,10 +3,11 @@ from __future__ import annotations
 import copy
 import itertools
 import os
+import random
 import time
 from typing import List, Optional, Set
 
-from PySide6.QtCore import QPoint, QRect, Qt, QThread, QObject
+from PySide6.QtCore import QPoint, QRect, Qt, QObject
 from PySide6.QtGui import QPainter, QPolygon, QColor
 from PySide6.QtWidgets import QFileDialog
 
@@ -31,6 +32,10 @@ class Cell:
 
         self.edge_id = [0, 0, 0, 0]
         self.edge_exists = [False, False, False, False]
+
+    @property
+    def empty(self):
+        return self.value == 0
 
     @property
     def row(self):
@@ -529,7 +534,7 @@ class Sudoku:
                 "ratio": False,
                 "XV": False
             },
-            "constraints": {
+            "components": {
                 "lines": [line.to_json() for line in self.lines_components],
                 "border": [cmp.to_json() for cmp in self.border_components],
                 "cells": [cell_cmp.to_json() for cell_cmp in self.cell_components],
@@ -568,7 +573,7 @@ class Sudoku:
             for key, val in data["constraints"].items():
                 setattr(self, key, val)
 
-            for item in data["constraints"]["border"]:
+            for item in data["components"]["border"]:
                 match item["type"]:
 
                     case "XVSum":
@@ -592,7 +597,7 @@ class Sudoku:
 
                 self.border_components.append(obj)
 
-            for item in data["constraints"]["cells"]:
+            for item in data["components"]["cells"]:
                 match item["type"]:
 
                     case "EvenDigit":
@@ -603,7 +608,7 @@ class Sudoku:
                         obj = cell_components.OddDigit(self, item["index"])
                         self.cell_components.append(obj)
 
-            for item in data["constraints"]["lines"]:
+            for item in data["components"]["lines"]:
                 match item["type"]:
 
                     case "Arrow":
@@ -650,7 +655,7 @@ class Sudoku:
                         obj = line_components.GermanWhispersLine(self, SmartList(item["indices"]))
                         self.lines_components.append(obj)
 
-            for item in data["constraints"]["outside"]:
+            for item in data["components"]["outside"]:
                 match item["type"]:
                     case "Sandwich":
                         obj = outside_components.Sandwich(self, item["col"], item["row"],
@@ -667,7 +672,7 @@ class Sudoku:
                                                               item["total"], item["direction"])
                         self.outside_components.append(obj)
 
-            for item in data["constraints"]["regions"]:
+            for item in data["components"]["regions"]:
                 match item["type"]:
                     case "Cage":
                         self.region_components.append(region_components.Cage.from_json(self, item))
@@ -913,7 +918,10 @@ class Sudoku:
 
         cell = self.board[index]
 
-        for number in cell.valid_numbers:
+        numbers = cell.valid_numbers
+        random.shuffle(numbers)
+
+        for number in numbers:
             cell.value = number
 
             if self.solve(thread):
@@ -1045,3 +1053,6 @@ class Sudoku:
         return Sudoku.from_string(
             "0" * 81
         )
+
+
+

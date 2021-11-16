@@ -1,7 +1,8 @@
 import datetime
 
 from PySide6.QtCore import Qt, QEvent
-from PySide6.QtGui import QCursor, QMouseEvent, QIcon, QResizeEvent, QEnterEvent, QAction
+from PySide6.QtGui import QCursor, QMouseEvent, QIcon, QResizeEvent, QEnterEvent, QAction, QColor, \
+    QPaintEvent, QPainter, QFont, QPen
 from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QFrame, QHBoxLayout, QPushButton, \
     QWidget, QSizeGrip, QComboBox, QGridLayout, QMenu, QSizePolicy, QCheckBox, QApplication, \
     QLineEdit, QLabel, QTextEdit, QSlider
@@ -98,6 +99,8 @@ class SudokuWindow(QMainWindow):
         self.speed_slider.setRange(1, 100)
         self.speed_slider.setValue(50)
 
+        self.digit_frame = DigitFrame(self)
+
         ############################################################################################
 
         self.central_layout = QVBoxLayout(self.central_frame)
@@ -115,38 +118,55 @@ class SudokuWindow(QMainWindow):
         self.mode_switch.currentIndexChanged.connect(
             lambda: self.board.setFocus()
         )
+        self.mode_switch.currentIndexChanged.connect(
+            self.digit_frame.set_mode
+        )
 
         self.step_by_step_solve = QCheckBox("Step by Step")
 
-        self.content_layout = QGridLayout()
+        self.content_layout = QHBoxLayout()
         self.content_layout.setContentsMargins(10, 10, 10, 10)
         self.content_layout.setSpacing(10)
-        self.content_layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.content_layout.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
 
-        self.settings_layout = QGridLayout()
-        self.settings_layout.setContentsMargins(10, self.board.cell_size, 10, 10)
-        self.settings_layout.setSpacing(10)
-        self.settings_layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.left_view = QFrame(self)
+        self.left_view.setMinimumWidth(250)
+        self.left_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        self.right_view = QFrame(self)
+        self.right_view.setMinimumWidth(250)
+        self.right_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        self.left_layout = QGridLayout(self.left_view)
+        self.left_layout.setContentsMargins(0, 0, 0, 0)
+        self.left_layout.setSpacing(10)
+        self.left_layout.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
+
+        self.right_layout = QGridLayout(self.right_view)
+        self.right_layout.setContentsMargins(0, 0, 0, 0)
+        self.right_layout.setSpacing(10)
+        self.right_layout.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
 
         self.central_layout.addWidget(self.title_bar)
         self.central_layout.addWidget(self.constraints_menu)
         self.central_layout.addLayout(self.content_layout)
 
-        self.content_layout.addWidget(self.board, 0, 0, 1, 1)
-        self.content_layout.addLayout(self.settings_layout, 0, 1, 1, 1)
+        self.content_layout.addWidget(self.left_view)
+        self.content_layout.addWidget(self.board)
+        self.content_layout.addWidget(self.right_view)
 
-        self.settings_layout.addWidget(self.rule_view, 0, 0, 2, 2)
-        self.settings_layout.addWidget(self.component_menu, 0, 2, 2, 2)
-        self.settings_layout.addWidget(self.mode_switch, 2, 2, 1, 1)
-        self.settings_layout.addWidget(self.solve_btn, 2, 0, 1, 2)
-        self.settings_layout.addWidget(self.step_btn, 3, 2, 1, 1)
-        self.settings_layout.addWidget(self.step_by_step_solve, 3, 3, 1, 1)
-        self.settings_layout.addWidget(self.clear_btn, 3, 0, 1, 2)
-        self.settings_layout.addWidget(self.save_btn, 4, 0, 1, 2)
-        self.settings_layout.addWidget(self.load_btn, 4, 2, 1, 2)
-        self.settings_layout.addWidget(self.speed_slider, 5, 0, 1, 4)
+        self.left_layout.addWidget(self.save_btn, 0, 0, 1, 1)
+        self.left_layout.addWidget(self.load_btn, 0, 1, 1, 1)
+        self.left_layout.addWidget(self.highlight_cells_box, 1, 0, 1, 1)
+        self.left_layout.addWidget(self.step_by_step_solve, 1, 1, 1, 1)
+        self.left_layout.addWidget(self.solve_btn, 2, 0, 1, 2)
+        self.left_layout.addWidget(self.clear_btn, 3, 0, 1, 2)
+        self.left_layout.addWidget(self.speed_slider, 4, 0, 1, 2)
+        self.left_layout.addWidget(self.mode_switch, 5, 0, 1, 2)
+        self.left_layout.addWidget(self.digit_frame, 6, 0, 2, 2)
 
-        self.settings_layout.addWidget(self.highlight_cells_box, 2, 3, 1, 1)
+        self.right_layout.addWidget(self.rule_view, 0, 0, 2, 1)
+        self.right_layout.addWidget(self.component_menu, 2, 0, 2, 1)
 
         # Resizing
 
@@ -445,6 +465,8 @@ class RuleView(QFrame):
                            "QLabel{background: white; border: none}"
                            "QTextEdit{background: white; border: none; padding: 15px}")
 
+        self.setMinimumWidth(200)
+
         self.layout_ = QVBoxLayout(self)
         self.layout_.setContentsMargins(0, 0, 0, 0)
         self.layout_.setSpacing(0)
@@ -477,4 +499,102 @@ class RuleView(QFrame):
 
     def update(self):
         super(RuleView, self).update()
-        print("TEST")
+
+
+class DigitFrame(QFrame):
+    def __init__(self, window: SudokuWindow):
+        super().__init__()
+
+        self.mode = 0
+
+        self.window_ = window
+
+        self.layout_ = QGridLayout(self)
+        self.layout_.setContentsMargins(10, 10, 10, 10)
+        self.layout_.setSpacing(10)
+
+        self.btns = [DigitButton(self, i) for i in range(10)]
+
+        for i in range(9):
+            self.layout_.addWidget(self.btns[i], i // 3, i % 3)
+
+    def set_mode(self):
+        self.mode = self.window_.mode_switch.currentIndex()
+        for i in range(9):
+            self.btns[i].update()
+        self.update()
+
+
+class DigitButton(QWidget):
+    COLORS = [
+        QColor("#88C1F2"),  # Blue
+        QColor("#F29494"),  # Red
+        QColor("#DCF2AC"),  # Green
+
+        QColor("#EAAEF2"),  # Purple
+        QColor("#F2AB91"),  # Orange
+        QColor("#F2DC99"),  # YELLOW
+
+        QColor("#BBBBBB"),  # Light Gray
+        QColor("#666666"),  # Dark Gray
+        QColor("#000000"),  # Black
+        QColor("#FFFFFF")  # White
+    ]
+
+    def __init__(self, menu: DigitFrame, index: int):
+        super().__init__()
+
+        self.menu = menu
+        self.index = index
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        self.setCursor(QCursor(Qt.PointingHandCursor))
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        self.menu.window_.board.set_value(self.index + 1)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        self.setFixedHeight(self.width())
+        self.update()
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.TextAntialiasing)
+
+        if self.menu.mode == 3:
+            painter.fillRect(self.rect(), self.COLORS[self.index])
+
+        else:
+
+            alignment = Qt.AlignCenter
+            painter.setFont(QFont("Asap", 25 if self.menu.mode == 0 else 16))
+
+            if self.menu.mode == 2:
+
+                match self.index:
+                    case 0:
+                        alignment = Qt.AlignTop | Qt.AlignLeft
+                    case 1:
+                        alignment = Qt.AlignTop | Qt.AlignHCenter
+                    case 2:
+                        alignment = Qt.AlignTop | Qt.AlignRight
+                    case 3:
+                        alignment = Qt.AlignVCenter | Qt.AlignLeft
+                    case 4:
+                        alignment = Qt.AlignVCenter | Qt.AlignHCenter
+                    case 5:
+                        alignment = Qt.AlignVCenter | Qt.AlignRight
+                    case 6:
+                        alignment = Qt.AlignBottom | Qt.AlignLeft
+                    case 7:
+                        alignment = Qt.AlignBottom | Qt.AlignHCenter
+                    case 8:
+                        alignment = Qt.AlignBottom | Qt.AlignRight
+                    case _:
+                        alignment = Qt.AlignCenter
+
+            painter.drawText(self.rect(), alignment, str(self.index + 1))
+
+        painter.setPen(QPen(Qt.black, 3.0))
+        painter.drawLine(self.rect().bottomLeft(), self.rect().bottomRight())
