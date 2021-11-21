@@ -14,7 +14,7 @@ from constraints.line_components import LineComponent, GermanWhispersLine, Therm
     PalindromeLine, Arrow, BetweenLine, LockoutLine
 from constraints.region_components import RegionComponent, Cage, Clone
 from constraints.outside_components import Sandwich, XSumsClue, LittleKiller, OutsideComponent
-from utils import SmartList
+from utils import BoundList
 
 
 class ComponentMenu(QFrame):
@@ -50,7 +50,7 @@ class ComponentMenu(QFrame):
         self.add_button(ComponentButton(self, Ratio(self.sudoku, [])), 1, 0)
         self.add_button(ComponentButton(self, Difference(self.sudoku, [])), 1, 1)
         self.add_button(ComponentButton(self, XVSum(self.sudoku, [])), 2, 0)
-        self.add_button(ComponentButton(self, Quadruple(self.sudoku, [], SmartList(max_length=4, sort_=True))),
+        self.add_button(ComponentButton(self, Quadruple(self.sudoku, [], BoundList(max_length=4, sort_=True))),
                         2, 1)
         self.add_button(ComponentButton(self, LessGreater(self.sudoku, [])), 3, 0)
         self.add_button(ComponentButton(self, Sandwich(self.sudoku, col=0, row=1, total=0)), 3, 1)
@@ -64,13 +64,13 @@ class ComponentMenu(QFrame):
         )
         self.add_button(ComponentButton(self, EvenDigit(self.sudoku, 0)), 5, 0)
         self.add_button(ComponentButton(self, OddDigit(self.sudoku, 0)), 5, 1)
-        self.add_button(ComponentButton(self, Thermometer(self.sudoku, SmartList())), 6, 0)
-        self.add_button(ComponentButton(self, GermanWhispersLine(self.sudoku, SmartList())), 6, 1)
-        self.add_button(ComponentButton(self, Cage(self.sudoku, SmartList(max_length=9))), 7, 0)
-        self.add_button(ComponentButton(self, PalindromeLine(self.sudoku, SmartList())), 7, 1)
-        self.add_button(ComponentButton(self, Arrow(self.sudoku, SmartList())), 8, 0)
-        self.add_button(ComponentButton(self, BetweenLine(self.sudoku, SmartList())), 8, 1)
-        self.add_button(ComponentButton(self, LockoutLine(self.sudoku, SmartList())), 9, 0)
+        self.add_button(ComponentButton(self, Thermometer(self.sudoku, BoundList())), 6, 0)
+        self.add_button(ComponentButton(self, GermanWhispersLine(self.sudoku, BoundList())), 6, 1)
+        self.add_button(ComponentButton(self, Cage(self.sudoku, BoundList(max_length=9))), 7, 0)
+        self.add_button(ComponentButton(self, PalindromeLine(self.sudoku, BoundList())), 7, 1)
+        self.add_button(ComponentButton(self, Arrow(self.sudoku, BoundList())), 8, 0)
+        self.add_button(ComponentButton(self, BetweenLine(self.sudoku, BoundList())), 8, 1)
+        self.add_button(ComponentButton(self, LockoutLine(self.sudoku, BoundList())), 9, 0)
         # self.add_button(ComponentButton(self, Clone(self.sudoku, SmartList())), 9, 1)
 
     def toggle_buttons(self):

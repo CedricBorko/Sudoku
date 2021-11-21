@@ -5,10 +5,27 @@ import random
 from abc import ABC, abstractmethod
 from typing import List, Tuple
 
+from PySide6.QtCore import Qt
+
+from constraints__.constraint import LogicResult
+
 UP_LEFT = (-1, -1)
 UP_RIGHT = (-1, 1)
 DOWN_LEFT = (1, -1)
 DOWN_RIGHT = (1, 1)
+
+
+class Direction:
+    Left = 0x1
+    Up = 0x2
+    Down = 0x4
+    Right = 0x8
+
+    Up_Left = 0x3
+    Up_Right = 0x9
+
+    Down_Left = 0x5
+    Down_Right = 0xC
 
 
 class Grid:
@@ -175,6 +192,12 @@ class Grid:
             if self.is_valid(r * self.size + c, n):
                 self.set(r * self.size + c, n)
 
+    def set_candidates(self):
+        result = LogicResult.CHANGED
+
+        for cell in self.cells:
+            cell.candidates = self.valid_numbers(cell.index)
+
 
 class Cell:
     def __init__(self, grid: Grid, index: int):
@@ -183,7 +206,7 @@ class Cell:
         self.index = index
         self.value = -1
 
-        self.candidates = set()
+        self.candidates = {1, 2, 3, 4, 5, 6, 7, 8, 9}
         self.pencil_corner = set()
         self.colors = set()
 
@@ -239,20 +262,3 @@ class Cell:
 
 if __name__ == '__main__':
     g = Grid(9)
-
-    s = """-  -  -  -  -  -  -  -  -  
-    -  7  -  -  -  2  -  4  -  
-    -  -  -  -  3  -  -  1  2  
-    -  5  7  -  9  8  -  -  -  
-    -  -  4  -  -  -  -  -  5  
-    -  -  -  -  -  -  -  3  1  
-    -  -  -  -  -  9  4  -  -  
-    -  -  -  -  5  6  -  9  -  
-    5  -  -  -  -  -  6  -  -""".replace(" ", "").replace("\n", "")
-    for i, val in enumerate(s):
-        if val != "-":
-            g.set(i, int(val))
-
-    g.calculate_valid_numbers()
-    print(g)
-

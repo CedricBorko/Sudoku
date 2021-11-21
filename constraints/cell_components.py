@@ -50,7 +50,7 @@ class OddDigit(CellComponent):
         painter.setPen(Qt.NoPen)
 
         size = int(cell_size * 0.8)
-        rect = self.sudoku.board[self.index].rect(cell_size)
+        rect = self.sudoku.cells[self.index].rect(cell_size)
         painter.drawEllipse(
             QPoint(rect.x() + cell_size // 2, rect.y() + cell_size // 2),
             size // 2,
@@ -71,5 +71,5 @@ class EvenDigit(CellComponent):
     def draw(self, painter: QPainter, cell_size: int):
         painter.setPen(Qt.NoPen)
 
-        rect = self.sudoku.board[self.index].scaled_rect(cell_size, 0.8)
+        rect = self.sudoku.cells[self.index].scaled_rect(cell_size, 0.8)
         painter.fillRect(rect, self.color)

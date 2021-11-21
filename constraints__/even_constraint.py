@@ -3,7 +3,7 @@ from typing import Tuple, Dict
 from PySide6.QtGui import QPainter, QColor
 
 from constraints__.constraint import Constraint, LogicResult
-from sudoku import Cell
+from sudoku_.sudoku import Cell
 
 
 class EvenConstraint(Constraint):

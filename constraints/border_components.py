@@ -7,8 +7,8 @@ from typing import List, Dict
 from PySide6.QtCore import QPoint, QRect
 from PySide6.QtGui import QPainter, QBrush, QColor, QPen, QFont, Qt
 
-from sudoku import Sudoku, Cell
-from utils import SmartList
+from sudoku_.sudoku import Sudoku, Cell
+from utils import BoundList
 
 
 class Component(ABC):
@@ -25,7 +25,7 @@ class Component(ABC):
 
     @property
     def cells(self) -> List[Cell]:
-        return [self.sudoku.board[i] for i in self.indices]
+        return [self.sudoku.cells[i] for i in self.indices]
 
     @property
     def first(self) -> Cell:
@@ -38,6 +38,9 @@ class Component(ABC):
     @property
     def second(self) -> Cell:
         return self.cells[1]
+
+    def set_candidates(self) -> int:
+        return 1
 
     def valid(self, index: int, number: int) -> bool:
         """
@@ -494,7 +497,7 @@ class Quadruple(BorderComponent):
 
     RULE = "All numbers in the large white circle must appear at least once in the four surrounding cells."
 
-    def __init__(self, sudoku: "Sudoku", indices: List[int], numbers: SmartList[int]):
+    def __init__(self, sudoku: "Sudoku", indices: List[int], numbers: BoundList[int]):
         super().__init__(sudoku, indices)
 
         self.numbers = numbers
@@ -515,11 +518,11 @@ class Quadruple(BorderComponent):
 
     def setup(self, selected: List[int]):
         self.indices = selected
-        self.numbers = SmartList([], max_length=4, sort_=True)
+        self.numbers = BoundList([], max_length=4, sort_=True)
 
     def clear(self):
         self.indices = []
-        self.numbers = SmartList([], max_length=4, sort_=True)
+        self.numbers = BoundList([], max_length=4, sort_=True)
 
     def empties(self) -> List[Cell]:
         return [cell for cell in self.cells if cell.value == 0]

@@ -8,8 +8,8 @@ from PySide6.QtCore import Qt, QRect, QPoint, QSize
 from PySide6.QtGui import QPainter, QPen, QColor, QFont
 
 from constraints.border_components import Component
-from sudoku import Cell, tile_to_poly
-from utils import SmartList, sum_first_n, n_digit_sums
+from sudoku_.sudoku import Cell, tile_to_poly
+from utils import BoundList, sum_first_n, n_digit_sums, Constants
 
 
 class RegionComponent(Component, ABC):
@@ -36,7 +36,7 @@ class RegionComponent(Component, ABC):
 class Clone(RegionComponent):
     NAME = "Clone"
 
-    def __init__(self, sudoku: "Sudoku", indices: SmartList[int], partner: bool = False):
+    def __init__(self, sudoku: "Sudoku", indices: BoundList[int], partner: bool = False):
         super().__init__(sudoku, indices)
 
         self.partner = partner
@@ -66,7 +66,7 @@ class Cage(RegionComponent):
     RULE = ("Number in the indicated cage sum to the small number in its top left corner. "
             "Numbers inside the cage must not repeat.")
 
-    def __init__(self, sudoku: "Sudoku", indices: SmartList[int], total: int = None):
+    def __init__(self, sudoku: "Sudoku", indices: BoundList[int], total: int = None):
         super().__init__(sudoku, indices)
 
         self.total = total
@@ -159,22 +159,29 @@ class Cage(RegionComponent):
 
 
     def clear(self):
-        self.indices = SmartList(max_length=9)
+        self.indices = BoundList(max_length=9)
         self.total = None
 
     def space_left(self, board: List[Cell]) -> int:
         return len([cell for cell in board if cell.index in self.cells and cell.value == 0])
 
-    def draw(self, painter: QPainter, cell_size: int):
+    def draw(self, painter: QPainter, cell_size: int, funny: bool = False):
+        """
 
-        pen = QPen(QColor(40, 40, 40), 2.0, Qt.DashLine)
+        :param painter:
+        :param cell_size:
+        :param funny: Compares the edge_type to int base 10 instead of base 16 (gives funny look)
+        :return:
+        """
+
+        pen = QPen(QColor(40, 40, 40), 2.0, Qt.DotLine)
         pen.setCapStyle(Qt.RoundCap)
 
         painter.setPen(pen)
 
-        edges = tile_to_poly(self.sudoku.board, cell_size, set(self.indices), self.inner_offset)
+        edges = tile_to_poly(self.sudoku.cells, cell_size, set(self.indices), self.inner_offset)
         for edge in edges:
-            if edge.edge_type == 0:
+            if edge.edge_type == (0 if funny else Constants.NORTH):
 
                 painter.drawLine(
                     cell_size + edge.sx + self.inner_offset,
@@ -183,7 +190,7 @@ class Cage(RegionComponent):
                     cell_size + edge.ey + self.inner_offset
                 )
 
-            elif edge.edge_type == 1:
+            elif edge.edge_type == (1 if funny else Constants.EAST):
                 painter.drawLine(
                     cell_size + edge.sx - self.inner_offset,
                     cell_size + edge.sy + self.inner_offset,
@@ -191,7 +198,7 @@ class Cage(RegionComponent):
                     cell_size + edge.ey - self.inner_offset
                 )
 
-            elif edge.edge_type == 2:
+            elif edge.edge_type == (2 if funny else Constants.SOUTH):
                 painter.drawLine(
                     cell_size + edge.sx + self.inner_offset,
                     cell_size + edge.sy - self.inner_offset,

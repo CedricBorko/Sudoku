@@ -6,8 +6,8 @@ from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QPolygon
 
 from constraints.border_components import Component
-from sudoku import Sudoku, Cell
-from utils import smallest_sum_including_x, sum_first_n, SmartList
+from sudoku_.sudoku import Sudoku, Cell
+from utils import smallest_sum_including_x, sum_first_n, BoundList
 
 
 class LineComponent(Component):
@@ -37,10 +37,10 @@ class LineComponent(Component):
         return self.first.index, self.last.index
 
     def setup(self, index: int):
-        self.indices = SmartList([index])
+        self.indices = BoundList([index])
 
     def clear(self):
-        self.indices = SmartList()
+        self.indices = BoundList()
 
     def position_on_line(self, cell_index: int) -> int:
         return self.indices.index(cell_index)
@@ -49,7 +49,7 @@ class LineComponent(Component):
         if (length := len(self.indices)) % 2 == 0:
             return self.indices[length // 2 - 1:length // 2 + 1]
 
-        return self.sudoku.board[self.indices[length // 2]],
+        return self.sudoku.cells[self.indices[length // 2]],
 
     def check_valid(self):
         return True
@@ -57,12 +57,12 @@ class LineComponent(Component):
     def next_cell(self, cell_index: int) -> Cell:
         if cell_index != self.indices[-1]:
             n = self.indices[self.position_on_line(cell_index) + 1]
-            return self.sudoku.board[n]
+            return self.sudoku.cells[n]
 
     def previous_cell(self, cell_index: int) -> Cell:
         if cell_index != self.indices[0]:
             p = self.indices[self.position_on_line(cell_index) - 1]
-            return self.sudoku.board[p]
+            return self.sudoku.cells[p]
 
     def on_end(self, cell_index: int):
         return cell_index in (self.indices[0], self.indices[-1])
@@ -148,19 +148,19 @@ class GermanWhispersLine(LineComponent):
         return True
 
     def valid_location(self, index: int, not_on_border: bool):
-        if index in self.first.neighbours and not_on_border:
+        if index in self.sudoku.indices(self.first.neighbours) and not_on_border:
             if index not in self.indices:
                 self.indices.insert(0, index)
                 return True
 
-        elif index in self.last.neighbours and not_on_border:
+        elif index in self.sudoku.indices(self.last.neighbours) and not_on_border:
             if index not in self.indices:
                 self.indices.append(index)
                 return True
         return False
 
     def setup(self, index: int):
-        self.indices = SmartList([index])
+        self.indices = BoundList([index])
 
     @property
     def ends(self):
@@ -172,7 +172,7 @@ class GermanWhispersLine(LineComponent):
                 return cmp
 
     def clear(self):
-        self.indices = SmartList([])
+        self.indices = BoundList([])
 
 
 class PalindromeLine(LineComponent):
@@ -181,7 +181,7 @@ class PalindromeLine(LineComponent):
     LAYER = 4
     RULE = "The numbers on the grey line appear the same forward and backward."
 
-    def __init__(self, sudoku: "Sudoku", indices: SmartList[int]):
+    def __init__(self, sudoku: "Sudoku", indices: BoundList[int]):
         super().__init__(sudoku, indices)
 
         self.color = QColor("#999999")
@@ -203,7 +203,7 @@ class PalindromeLine(LineComponent):
         return sop
 
     def setup(self, index: int):
-        self.indices = SmartList([index])
+        self.indices = BoundList([index])
 
     @property
     def ends(self):
@@ -225,7 +225,7 @@ class PalindromeLine(LineComponent):
                 return cmp
 
     def clear(self):
-        self.indices = SmartList([])
+        self.indices = BoundList([])
 
     def valid(self, index: int, number: int):
         if index not in self.indices:
@@ -240,12 +240,12 @@ class PalindromeLine(LineComponent):
 
     def valid_location(self, index: int, diagonal: bool):
 
-        if index in self.first.neighbours and diagonal:
+        if index in self.sudoku.indices(self.first.neighbours) and diagonal:
             if index not in self.indices:
                 self.indices.insert(0, index)
                 return True
 
-        elif index in self.last.neighbours and diagonal:
+        elif index in self.sudoku.indices(self.last.neighbours) and diagonal:
             if index not in self.indices:
                 self.indices.append(index)
                 return True
@@ -268,11 +268,11 @@ class Thermometer(LineComponent):
 
     def clear(self):
         self.branches = []
-        self.indices = SmartList()
+        self.indices = BoundList()
 
     def setup(self, index: int):
         self.indices = [index]
-        self.bulb = self.sudoku.board[index]
+        self.bulb = self.sudoku.cells[index]
         self.branches = []
 
     def to_json(self):
@@ -299,7 +299,7 @@ class Thermometer(LineComponent):
 
     def valid_location(self, index: int) -> bool:
         return (
-            index in self.current_branch[-1].neighbours
+            index in self.sudoku.indices(self.current_branch[-1].neighbours)
             and index != self.bulb.index
             and index not in [c.index for c in self.current_branch]
             and len(self.current_branch) < 8
@@ -307,62 +307,6 @@ class Thermometer(LineComponent):
 
     def __repr__(self):
         return ' -> '.join(map(str, self.indices))
-
-    """def ascending(self, number: int, pos: int):
-        for cell in [c for c in self.cells[pos + 1:] if c.value != 0]:
-            if number > cell.value:
-                return False, cell
-        return True, None
-
-    def empties(self, start: int):
-        cells = []
-        for i in range(start + 1, len(self.indices)):
-
-            if self.cells[i].value == 0:
-                cells.append(self.cells[i])
-            else:
-                cells.append(self.cells[i])
-                break
-
-        return cells
-
-    def enough_space(self, index: int, number: int):
-
-        seq = self.empties(index)
-        if not seq:
-            return True, [1]
-        if all(x.value == 0 for x in seq):
-            return True, seq
-
-        return number + len(seq) - 1 < seq[-1].value, seq
-
-    def possible_index(self, number: int, index: int, show_constraint: bool = False):
-        if number == 1 and index != 0:
-            if show_constraint:
-                print(number, "CAN ONLY GO ON THE FIRST POSITION IN A THERMOMETER")
-
-            return False
-
-        if number == 9 and index != len(self.indices) - 1:
-            if show_constraint:
-                print(number, "CAN ONLY GO ON THE LAST POSITION IN A THERMOMETER")
-            return False
-
-        space_after = len(self.indices[index + 1:])
-        space_before = len(self.indices[:index])
-
-        if number > 9 - space_after:
-            if show_constraint:
-                print(number, "TOO MUCH SPACE AFTER")
-
-            return False
-
-        if number <= space_before:
-            if show_constraint:
-                print(number, "NOT ENOUGH SPACE BEFORE")
-            return False
-
-        return True"""
 
     def valid(self, index: int, number: int) -> bool:
         for branch in self.branches:
@@ -468,7 +412,7 @@ class Thermometer(LineComponent):
         return False
 
     def can_add_branch(self, index: int):
-        return index in self.bulb.neighbours
+        return index in self.sudoku.indices(self.bulb.neighbours)
 
 
 class Arrow(LineComponent):
@@ -477,7 +421,7 @@ class Arrow(LineComponent):
     LAYER = 2
     RULE = "Number on the arrow sum to the number in the circle at its start."
 
-    def __init__(self, sudoku: "Sudoku", indices: SmartList[int]):
+    def __init__(self, sudoku: "Sudoku", indices: BoundList[int]):
         super().__init__(sudoku, indices)
 
         self.bulb = None
@@ -496,7 +440,7 @@ class Arrow(LineComponent):
 
     def clear(self):
         self.branches = []
-        self.indices = SmartList()
+        self.indices = BoundList()
 
     def __eq__(self, other):
         if isinstance(other, Arrow):
@@ -510,7 +454,7 @@ class Arrow(LineComponent):
         return sum([c.value for c in self.cells[self.bulb.index:] if c.value != 0])
 
     def can_add_branch(self, index: int):
-        return index in self.bulb.neighbours
+        return index in self.sudoku.indices(self.bulb.neighbours)
 
     def get_branch(self, index: int) -> List[Cell]:
 
@@ -527,12 +471,12 @@ class Arrow(LineComponent):
 
     def setup(self, index: int):
         self.indices = [index]
-        self.bulb = self.sudoku.board[index]
+        self.bulb = self.sudoku.cells[index]
         self.branches = []
 
     def valid_location(self, index: int) -> bool:
         return (
-            index in self.current_branch[-1].neighbours
+            index in self.sudoku.indices(self.current_branch[-1].neighbours)
             and index != self.bulb.index
             and index not in [c.index for c in self.current_branch]
         )
@@ -672,7 +616,7 @@ class BetweenLine(LineComponent):
     LAYER = 6
     RULE = "Numbers on a line with 2 circles at its end must be strictly between the numbers in these circles."
 
-    def __init__(self, sudoku: "Sudoku", indices: SmartList[int]):
+    def __init__(self, sudoku: "Sudoku", indices: BoundList[int]):
         super().__init__(sudoku, indices)
 
         self.bulb = None
@@ -689,7 +633,7 @@ class BetweenLine(LineComponent):
                 return cmp
 
     def can_add_branch(self, index: int):
-        return index in self.bulb.neighbours
+        return index in self.sudoku.indices(self.bulb.neighbours)
 
     def to_json(self):
         return {
@@ -704,11 +648,11 @@ class BetweenLine(LineComponent):
 
     def clear(self):
         self.branches = []
-        self.indices = SmartList()
+        self.indices = BoundList()
 
     def setup(self, index: int):
         self.indices = [index]
-        self.bulb = self.sudoku.board[index]
+        self.bulb = self.sudoku.cells[index]
         self.branches = []
 
     @property
@@ -717,7 +661,7 @@ class BetweenLine(LineComponent):
 
     def valid_location(self, index: int) -> bool:
         return (
-            index in self.current_branch[-1].neighbours
+            index in self.sudoku.indices(self.current_branch[-1].neighbours)
             and index != self.bulb.index
             and index not in [c.index for c in self.current_branch]
         )
@@ -739,6 +683,39 @@ class BetweenLine(LineComponent):
         if len(self.current_branch) > 1 and index == self.current_branch[-2].index:
             return True
         return False
+
+    def valid(self, index: int, number: int) -> bool:
+        for branch in self.branches:
+            if index in [c.index for c in branch]:
+                break
+        else:
+            branch = None
+
+        if branch is None and index != self.bulb.index:
+            return True
+
+        if index == self.bulb.index:
+
+            for branch_ in self.branches:
+                end = branch_[-1]
+
+                if end.value != 0:
+                    return math.fabs(number - end.value) >= 4
+
+            return True
+
+        elif index == branch[-1].index:
+            return math.fabs(number - self.bulb.value) >= 4 or self.bulb.value == 0
+
+        else:
+
+            if number in (1, 9):
+                return False
+
+            if (m := branch[-1].value) != 0 and (m2 := self.bulb.value) != 0:
+                return min(m, m2) < number < max(m, m2)
+
+            return True
 
     def draw(self, painter: QPainter, cell_size: int):
 
@@ -782,7 +759,7 @@ class LockoutLine(LineComponent):
 
     LAYER = 6
 
-    def __init__(self, sudoku: "Sudoku", indices: SmartList[int]):
+    def __init__(self, sudoku: "Sudoku", indices: BoundList[int]):
         super().__init__(sudoku, indices)
 
         self.bulb = None
@@ -811,15 +788,15 @@ class LockoutLine(LineComponent):
 
     def clear(self):
         self.branches = []
-        self.indices = SmartList()
+        self.indices = BoundList()
 
     def setup(self, index: int):
         self.indices = [index]
-        self.bulb = self.sudoku.board[index]
+        self.bulb = self.sudoku.cells[index]
         self.branches = []
 
     def can_add_branch(self, index: int):
-        return index in self.bulb.neighbours
+        return index in self.sudoku.indices(self.bulb.neighbours)
 
     @property
     def bulbs(self):
@@ -827,7 +804,7 @@ class LockoutLine(LineComponent):
 
     def valid_location(self, index: int) -> bool:
         return (
-            index in self.current_branch[-1].neighbours
+            index in self.sudoku.indices(self.current_branch[-1].neighbours)
             and index != self.bulb.index
             and index not in [c.index for c in self.current_branch]
         )
@@ -849,6 +826,36 @@ class LockoutLine(LineComponent):
         if len(self.current_branch) > 1 and index == self.current_branch[-2].index:
             return True
         return False
+
+    def valid(self, index: int, number: int) -> bool:
+        for branch in self.branches:
+            if index in [c.index for c in branch]:
+                break
+        else:
+            branch = None
+
+        if branch is None and index != self.bulb.index:
+            return True
+
+        if index == self.bulb.index:
+
+            for branch_ in self.branches:
+                end = branch_[-1]
+
+                if end.value != 0:
+                    return math.fabs(number - end.value) >= 4
+
+            return True
+
+        elif index == branch[-1].index:
+            if self.bulb.value != 0:
+                return math.fabs(number - self.bulb.value) >= 4
+            return True
+
+        else:
+
+            m, m2 = branch[-1].value, self.bulb.value
+            return not min(m, m2) <= number <= max(m, m2) or (m == 0 or m2 == 0)
 
     def draw(self, painter: QPainter, cell_size: int):
 

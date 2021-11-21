@@ -1,24 +1,26 @@
 from __future__ import annotations
 
 import copy
+import random
 import time
 from typing import List
 
-from PySide6.QtCore import QRect, Qt, QPoint, QObject, Signal, QThread
+from PySide6.QtCore import QRect, Qt, QObject, Signal, QThread
 from PySide6.QtGui import QPaintEvent, QPainter, QPen, QColor, QMouseEvent, QFont, \
-    QKeyEvent, QBrush, QResizeEvent
+    QKeyEvent, QResizeEvent
 from PySide6.QtWidgets import QWidget, QSizePolicy
 
 from constraints.border_components import XVSum, Quadruple, BorderComponent, Difference, Ratio, \
     LessGreater
-from constraints.cell_components import OddDigit, EvenDigit, CellComponent
+from constraints.cell_components import CellComponent
 from constraints.line_components import Arrow, LineComponent, PalindromeLine, GermanWhispersLine, \
     BetweenLine, LockoutLine, Thermometer
 from constraints.outside_components import Sandwich, XSumsClue, LittleKiller, OutsideComponent
-from constraints.region_components import RegionComponent, Cage, Clone
-from sudoku import Sudoku
-from sudoku import tile_to_poly
-from utils import SmartList
+from constraints.region_components import RegionComponent, Cage
+from sudoku_.sudoku import Sudoku
+from sudoku_.sudoku import tile_to_poly
+from utils import BoundList, Constants
+import sudoku_.board as b
 
 NORTH = 0
 EAST = 1
@@ -50,10 +52,31 @@ class Solver(QObject):
         super().__init__()
 
         self.sudoku = sudoku
-        self.speed = 50
+        self.speed = 1000
 
     def solve(self):
-        self.sudoku.solve(self)
+        self.sudoku.solve_in_thread(self, random_pick=True)
+
+        self.finished.emit()
+
+
+class Generator(QObject):
+    progressChanged = Signal()
+    finished = Signal()
+
+    def __init__(self, sudoku):
+        super().__init__()
+
+        self.sudoku = sudoku
+
+    def generate(self):
+        sudo = b.Sudoku(9)
+        sudo.generate_random_board()
+        sudo.genereate_board_with_unique_solution(random.randint(17, 56))
+        for i in range(81):
+            self.sudoku.cells[i].value = sudo.cells[i].value if sudo.cells[
+                                                                    i].value != -1 else Constants.EMPTY
+
         self.finished.emit()
 
 
@@ -95,6 +118,9 @@ class SudokuBoard(QWidget):
         self.solver = Solver(self.sudoku)
         self.thread_ = QThread(self.solver)
 
+        self.generator = Generator(self.sudoku)
+        self.thread_gen = QThread(self.generator)
+
     def onProgressChanged(self):
         self.update()
 
@@ -107,10 +133,10 @@ class SudokuBoard(QWidget):
         self.solver.speed = self.window_.speed_slider.value()
 
     def set_value(self, value: int):
-        self.steps_done.append(copy.deepcopy(self.sudoku.board))
+        self.steps_done.append(copy.deepcopy(self.sudoku.cells))
         mode = self.mode_switch.currentIndex()
         for index in self.selected:
-            cell = self.sudoku.board[index]
+            cell = self.sudoku.cells[index]
 
             if mode == 0 and self.sudoku.initial_state[index].value != 0:
                 continue
@@ -128,9 +154,22 @@ class SudokuBoard(QWidget):
             self.thread_.start()
             self.unsolved = False
         else:
-            self.sudoku.solve()
+            self.sudoku.solve(random_pick=True)
             self.sudoku.start_process()
+        self.update()
 
+    def generate_sudoku(self):
+
+        self.generator.moveToThread(self.thread_gen)
+        self.thread_gen.started.connect(self.generator.generate)
+        self.generator.finished.connect(self.tidy_gen)
+        self.generator.progressChanged.connect(self.onProgressChanged)
+        self.thread_gen.start()
+        self.update()
+
+    def tidy_gen(self):
+        self.thread_gen.quit()
+        self.thread_gen.wait()
         self.update()
 
     def tidy_up_thread(self):
@@ -138,15 +177,16 @@ class SudokuBoard(QWidget):
         self.thread_.wait()
 
     def next_step(self):
+
         self.sudoku.calculate_valid_numbers()
-        self.selected = {sorted([c for c in self.sudoku.board if c.value == 0],
-                                key=lambda cell: len(cell.valid_numbers))[0].index}
+
         self.update()
         self.setFocus()
 
     def clear_grid(self):
         for i in range(81):
-            self.sudoku.board[i].reset_values(skip_value=self.sudoku.initial_state[i].value != 0)
+            self.sudoku.cells[i].reset_values(
+                skip_value=self.sudoku.initial_state[i].value != Constants.EMPTY)
         self.selected.clear()
         self.update()
 
@@ -164,11 +204,21 @@ class SudokuBoard(QWidget):
 
         # DRAW CELL COLORS
 
-        for cell in self.sudoku.board:
+        for cell in self.sudoku.cells:
             cell.draw_colors(painter, self.cell_size)
 
         for cell_cmp in self.sudoku.cell_components:
             cell_cmp.draw(painter, self.cell_size)
+
+        # DRAW PHISTOMEFEL RING
+
+        """indices = (0, 1, 7, 8, 9, 10, 16, 17, 63, 64, 70, 71, 72, 73, 79, 80)
+
+        for index in indices:
+            painter.fillRect(self.sudoku.cells[index].rect(self.cell_size), COLORS[3])
+
+        for index in (20, 21, 22, 23, 24, 29, 33, 38, 42, 47, 51, 56, 57, 58, 59, 60):
+            painter.fillRect(self.sudoku.cells[index].rect(self.cell_size), COLORS[2])"""
 
         painter.setBrush(Qt.NoBrush)
 
@@ -180,13 +230,13 @@ class SudokuBoard(QWidget):
 
         offset = self.cell_size // 16  # SHIFTS THE SELECTION LINES INWARDS
 
-        for edge in tile_to_poly(self.sudoku.board, self.cell_size, self.selected, offset):
+        for edge in tile_to_poly(self.sudoku.cells, self.cell_size, self.selected, offset):
             if self.cell_component is None:
                 edge.draw(painter, self.cell_size, offset)
 
         if len(self.selected) == 1 and self.window_.highlight_cells_box.isChecked():
 
-            c = self.sudoku.board[next(iter(self.selected))]
+            c = self.sudoku.cells[next(iter(self.selected))]
 
             if c.value != 0:
                 for cell in self.sudoku.sees(c.index):
@@ -285,7 +335,7 @@ class SudokuBoard(QWidget):
 
         # DRAW CELL CONTENTS
 
-        for i, cell in enumerate(self.sudoku.board):
+        for i, cell in enumerate(self.sudoku.cells):
 
             painter.setFont(QFont("Asap", self.cell_size // 2, QFont.Bold))
             painter.setPen(QPen(QColor("#000000"), 1.0))
@@ -293,9 +343,9 @@ class SudokuBoard(QWidget):
             if cell.colors.only(QColor("#000000")):
                 painter.setPen(QPen(QColor("#FFFFFF"), 1.0))
 
-            if cell.value != 0:
+            if cell.value != Constants.EMPTY:
 
-                if self.sudoku.initial_state[i].value != 0:
+                if self.sudoku.initial_state[i].value != Constants.EMPTY:
                     painter.setPen(QPen(QColor("#000000"), 1.0))
                 else:
                     painter.setPen(
@@ -336,7 +386,8 @@ class SudokuBoard(QWidget):
         location = grid_row * 9 + grid_col
 
         if 0 <= location <= 80:
-            print(self.sudoku.valid_numbers(location))
+            # print(self.sudoku.valid_numbers(location))
+            print(self.sudoku.check_numbers(location))
 
         outside_col = event.x() // self.cell_size
         outside_row = event.y() // self.cell_size
@@ -526,7 +577,7 @@ class SudokuBoard(QWidget):
 
                     else:
 
-                        self.current_component.indices = SmartList([location], max_length=9)
+                        self.current_component.indices = BoundList([location], max_length=9)
 
                         self.sudoku.region_components.append(self.current_component)
                         self.selected_component = self.current_component
@@ -588,12 +639,12 @@ class SudokuBoard(QWidget):
                 self.selected = {*cmp.ends}
                 if cmp.current_branch is None:
                     if cmp.can_add_branch(new_location) and not_on_border:
-                        cmp.branches.append([self.sudoku.board[new_location]])
+                        cmp.branches.append([self.sudoku.cells[new_location]])
                         cmp.current_branch = cmp.branches[-1]
 
                 else:
                     if cmp.valid_location(new_location) and not_on_border:
-                        cmp.current_branch.append(self.sudoku.board[new_location])
+                        cmp.current_branch.append(self.sudoku.cells[new_location])
                         self.update()
                     else:
                         if cmp.can_remove(new_location):
@@ -611,7 +662,6 @@ class SudokuBoard(QWidget):
                 if (new_location in self.selected_component.get_orthogonals()
                     and self.selected_component.valid_location(new_location)):
                     self.selected_component.indices.append(new_location)
-
 
                 self.update()
 
@@ -645,7 +695,7 @@ class SudokuBoard(QWidget):
 
             case Qt.Key_Delete:
                 for i in self.selected:
-                    cell = self.sudoku.board[i]
+                    cell = self.sudoku.cells[i]
                     cell.clear_values(self.sudoku, mode)
 
         F_KEYS = [Qt.Key_F1, Qt.Key_F2, Qt.Key_F3, Qt.Key_F4]
@@ -705,11 +755,11 @@ class SudokuBoard(QWidget):
                     self.update()
                     return
 
-            self.steps_done.append(copy.deepcopy(self.sudoku.board))
+            self.steps_done.append(copy.deepcopy(self.sudoku.cells))
             for index in self.selected:
-                cell = self.sudoku.board[index]
+                cell = self.sudoku.cells[index]
 
-                if mode == 0 and self.sudoku.initial_state[index].value != 0:
+                if mode == 0 and self.sudoku.initial_state[index].value != Constants.EMPTY:
                     continue
                 else:
                     cell.set_values(mode, val, COLORS)
@@ -723,7 +773,7 @@ class SudokuBoard(QWidget):
         if event.key() == Qt.Key_Z and event.modifiers() == Qt.ControlModifier:
             if self.steps_done:
                 step = self.steps_done.pop()
-                self.sudoku.board = copy.deepcopy(step)
+                self.sudoku.cells = copy.deepcopy(step)
 
         if len(self.selected) == 1:
             index = next(iter(self.selected))
@@ -758,20 +808,20 @@ class SudokuBoard(QWidget):
         if not 0 <= location <= 80:
             return
 
-        selected_cell = self.sudoku.board[location]
+        selected_cell = self.sudoku.cells[location]
         self.selected.clear()
 
         match self.mode_switch.currentIndex():
 
             case 0 if selected_cell.value != 0:  # NORMAL
-                similar_cells = [c for c in self.sudoku.board if c.value == selected_cell.value]
+                similar_cells = [c for c in self.sudoku.cells if c.value == selected_cell.value]
             case 1:  # CENTER
-                similar_cells = [c for c in self.sudoku.board if
+                similar_cells = [c for c in self.sudoku.cells if
                                  c.valid_numbers == selected_cell.valid_numbers]
             case 2:  # CORNER
-                similar_cells = [c for c in self.sudoku.board if c.corner == selected_cell.corner]
+                similar_cells = [c for c in self.sudoku.cells if c.corner == selected_cell.corner]
             case 3:  # COLOR
-                similar_cells = [c for c in self.sudoku.board if c.colors == selected_cell.colors]
+                similar_cells = [c for c in self.sudoku.cells if c.colors == selected_cell.colors]
             case _:  # NONE OF THE ABOVE
                 similar_cells = [selected_cell]
 

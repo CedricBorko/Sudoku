@@ -5,7 +5,7 @@ from typing import List, Tuple, Dict
 
 from PySide6.QtGui import QPainter
 
-from sudoku import Cell
+from sudoku_.sudoku import Cell
 
 
 class Constraint(ABC):

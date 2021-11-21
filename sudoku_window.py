@@ -1,20 +1,17 @@
 import datetime
+import time
 
 from PySide6.QtCore import Qt, QEvent
 from PySide6.QtGui import QCursor, QMouseEvent, QIcon, QResizeEvent, QEnterEvent, QAction, QColor, \
     QPaintEvent, QPainter, QFont, QPen
 from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QFrame, QHBoxLayout, QPushButton, \
     QWidget, QSizeGrip, QComboBox, QGridLayout, QMenu, QSizePolicy, QCheckBox, QApplication, \
-    QLineEdit, QLabel, QTextEdit, QSlider
+    QLabel, QTextEdit
 
 from board import SudokuBoard
-from constraints.cell_components import EvenDigit, OddDigit
-from constraints.line_components import Arrow, LockoutLine, BetweenLine, PalindromeLine
-from constraints.outside_components import Sandwich
-from constraints.region_components import Cage
 from menus import ConstraintsMenu, ComponentMenu
-from sudoku import Sudoku
-from utils import monitor_size, SmartList
+from sudoku_.sudoku import Sudoku
+from utils import monitor_size
 
 
 class SudokuWindow(QMainWindow):
@@ -58,7 +55,8 @@ class SudokuWindow(QMainWindow):
 
         self.adding_component = False
 
-        self.sudoku = Sudoku.blank()
+        self.sudoku = Sudoku()
+        # self.sudoku.from_file(file_path=r"C:\Users\Cedric\PycharmProjects\Sudoku\Files\puzzles\Thermodrome2.json")
 
         ############################################################################################
         ############################################################################################
@@ -95,9 +93,7 @@ class SudokuWindow(QMainWindow):
         self.step_btn = QPushButton("Next step")
 
         self.rule_view = RuleView()
-        self.speed_slider = QSlider(Qt.Horizontal)
-        self.speed_slider.setRange(1, 100)
-        self.speed_slider.setValue(50)
+        self.generate_btn = QPushButton("Generate")
 
         self.digit_frame = DigitFrame(self)
 
@@ -113,7 +109,7 @@ class SudokuWindow(QMainWindow):
         self.save_btn.clicked.connect(self.sudoku.to_file)
         self.load_btn.clicked.connect(self.load_sudoku)
         self.step_btn.clicked.connect(self.board.next_step)
-        self.speed_slider.valueChanged.connect(self.board.set_speed)
+        self.generate_btn.clicked.connect(self.board.generate_sudoku)
 
         self.mode_switch.currentIndexChanged.connect(
             lambda: self.board.setFocus()
@@ -159,9 +155,10 @@ class SudokuWindow(QMainWindow):
         self.left_layout.addWidget(self.load_btn, 0, 1, 1, 1)
         self.left_layout.addWidget(self.highlight_cells_box, 1, 0, 1, 1)
         self.left_layout.addWidget(self.step_by_step_solve, 1, 1, 1, 1)
-        self.left_layout.addWidget(self.solve_btn, 2, 0, 1, 2)
+        self.left_layout.addWidget(self.solve_btn, 2, 0, 1, 1)
+        self.left_layout.addWidget(self.step_btn, 2, 1, 1, 1)
         self.left_layout.addWidget(self.clear_btn, 3, 0, 1, 2)
-        self.left_layout.addWidget(self.speed_slider, 4, 0, 1, 2)
+        self.left_layout.addWidget(self.generate_btn, 4, 0, 1, 2)
         self.left_layout.addWidget(self.mode_switch, 5, 0, 1, 2)
         self.left_layout.addWidget(self.digit_frame, 6, 0, 2, 2)
 
@@ -441,17 +438,14 @@ class SudokuTitleBar(QFrame):
         self.title_label.setText(f"{minutes}:{seconds}")
 
     def move_center(self):
-        return
-        width, height = monitor_size()
-        screen = QApplication.primaryScreen()
+        geom = QApplication.primaryScreen().geometry()
+        self.window.setGeometry(0, 0, geom.width() * (3 / 4), geom.height() * (3 / 4))
+        width, height = geom.width(), geom.height()
 
-        self.window.setGeometry(
-            width // 2 - screen.geometry().width() // 2,
-            height // 2 - screen.geometry().height() // 2,
-            screen.geometry().width() // 2, screen.geometry().height() // 2
-        )
+        x = (width - self.window.width()) // 2
+        y = (height - self.window.height()) // 2
 
-        # surface: 2736 x 1824
+        self.window.move(x, y)
 
 
 class RuleView(QFrame):

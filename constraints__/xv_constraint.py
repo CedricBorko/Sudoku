@@ -3,7 +3,7 @@ from typing import Dict, Tuple
 from PySide6.QtGui import QPainter
 
 from constraints__.constraint import Constraint, LogicResult
-from sudoku import Cell
+from sudoku_.sudoku import Cell
 
 
 class XVConstraint(Constraint):

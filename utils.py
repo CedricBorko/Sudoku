@@ -2,14 +2,58 @@ import itertools
 import math
 import os
 import threading
-from typing import Tuple, T, List
+from typing import Tuple, T, List, Collection
 
 from PySide6.QtCore import QPoint
 from PySide6.QtGui import QColor, QPainter
 
 
+class Constants:
+    EMPTY = 0
+    NUMBERS = {1, 2, 3, 4, 5, 6, 7, 8, 9}
+
+    WEST = 0x0
+    NORTH = 0x1
+    EAST = 0x2
+    SOUTH = 0x3
+
+    # NORTH_WEST = NORTH | WEST
+    # NORTH_EAST = NORTH | EAST
+    # SOUTH_EAST = SOUTH | EAST
+    # SOUTH_WEST = SOUTH | WEST
+
+    NULL = 0x0
+    INVALID = 0x1
+    VALID = 0x2
+    CHANGED = 0x4
+    SOLVED = 0x8
+
+    ################################################################################################
+    ################################################################################################
+
+
+class LogicResult:
+    def __init__(self, result: int, message: str):
+        self.result = result
+        self.message = message
+
+    def __repr__(self):
+        return self.message
+
+
+class Direction:
+    Left: int = 0x1
+    Right: int = 0x2
+    Up: int = 0x4
+    Up_Left: int = 0x5
+    Up_Right: int = 0x6
+    Down: int = 0x8
+    Down_Left: int = 0x9
+    Down_Right: int = 0xC
+
+
 def n_digit_sums(amount: int, target: int,
-                 allowed_digits: Tuple[int,...] = (1, 2, 3, 4, 5, 6, 7, 8, 9)):
+                 allowed_digits: Tuple[int, ...] = (1, 2, 3, 4, 5, 6, 7, 8, 9)):
     """
 
     :param allowed_digits: Digits that can be used in the sum, usually 1 to 9 including both
@@ -68,7 +112,7 @@ def uniquify(path):
     return path
 
 
-class SmartList(list):
+class BoundList(list):
     def __init__(self, items: List = None, max_length: int = None, sort_: bool = False):
         super().__init__()
 
@@ -85,7 +129,7 @@ class SmartList(list):
         else:
             if len(self) == self.max_length:
                 return
-            super(SmartList, self).append(__object)
+            super(BoundList, self).append(__object)
 
         if self.sort_:
             if isinstance(__object, QColor):

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import itertools
 import math
 from typing import List, Tuple
 
@@ -8,8 +7,8 @@ from PySide6.QtCore import Qt, QRect, QPoint
 from PySide6.QtGui import QPainter, QPen, QColor, QFont
 
 from constraints.border_components import Component
-from sudoku import Cell
-from utils import smallest_sum_including_x, n_digit_sums, sum_first_n, sum_last_n
+from sudoku_.sudoku import Cell
+from utils import n_digit_sums
 
 
 class OutsideComponent(Component):
@@ -322,27 +321,27 @@ class LittleKiller(OutsideComponent):
     def cells(self) -> List[Cell]:
         match self.row, self.col:
             case 0, 0:
-                return [self.sudoku.board[i] for i in range(0, 81, 10)]
+                return [self.sudoku.cells[i] for i in range(0, 81, 10)]
             case 10, 10:
-                return [self.sudoku.board[i] for i in range(0, 81, 10)]
+                return [self.sudoku.cells[i] for i in range(0, 81, 10)]
 
             case 10, 0:
-                return [self.sudoku.board[i] for i in range(8, 81, 8)]
+                return [self.sudoku.cells[i] for i in range(8, 81, 8)]
             case 0, 10:
-                return [self.sudoku.board[i] for i in range(8, 81, 8)]
+                return [self.sudoku.cells[i] for i in range(8, 81, 8)]
             case 0, _ if 0 < self.col < 10:
                 cells = []
                 row = 0
                 if self.direction == self.DOWN_LEFT:
                     x = self.col - 2
                     while x >= 0:
-                        cells.append(self.sudoku.board[row * 9 + x])
+                        cells.append(self.sudoku.cells[row * 9 + x])
                         x -= 1
                         row += 1
                 else:
                     x = self.col
                     while x <= 8:
-                        cells.append(self.sudoku.board[row * 9 + x])
+                        cells.append(self.sudoku.cells[row * 9 + x])
                         x += 1
                         row += 1
                 return cells
@@ -352,13 +351,13 @@ class LittleKiller(OutsideComponent):
                 if self.direction == self.TOP_LEFT:
                     x = self.col - 2
                     while x >= 0:
-                        cells.append(self.sudoku.board[row * 9 + x])
+                        cells.append(self.sudoku.cells[row * 9 + x])
                         x -= 1
                         row -= 1
                 else:
                     x = self.col
                     while x <= 8:
-                        cells.append(self.sudoku.board[row * 9 + x])
+                        cells.append(self.sudoku.cells[row * 9 + x])
                         x += 1
                         row -= 1
                 return cells
@@ -369,13 +368,13 @@ class LittleKiller(OutsideComponent):
                 if self.direction == self.TOP_RIGHT:
                     x = self.row - 2
                     while x >= 0:
-                        cells.append(self.sudoku.board[x * 9 + col])
+                        cells.append(self.sudoku.cells[x * 9 + col])
                         x -= 1
                         col += 1
                 else:
                     x = self.row
                     while x <= 8:
-                        cells.append(self.sudoku.board[x * 9 + col])
+                        cells.append(self.sudoku.cells[x * 9 + col])
                         x += 1
                         col += 1
                 return cells
@@ -386,13 +385,13 @@ class LittleKiller(OutsideComponent):
                 if self.direction == self.TOP_LEFT:
                     x = self.row - 2
                     while x >= 0:
-                        cells.append(self.sudoku.board[x * 9 + col])
+                        cells.append(self.sudoku.cells[x * 9 + col])
                         x -= 1
                         col -= 1
                 else:
                     x = self.row
                     while x <= 8:
-                        cells.append(self.sudoku.board[x * 9 + col])
+                        cells.append(self.sudoku.cells[x * 9 + col])
                         x += 1
                         col -= 1
                 return cells
