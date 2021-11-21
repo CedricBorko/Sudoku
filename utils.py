@@ -17,10 +17,10 @@ class Constants:
     EAST = 0x2
     SOUTH = 0x3
 
-    # NORTH_WEST = NORTH | WEST
-    # NORTH_EAST = NORTH | EAST
-    # SOUTH_EAST = SOUTH | EAST
-    # SOUTH_WEST = SOUTH | WEST
+    NORTH_WEST = 0x4
+    NORTH_EAST = 0x5
+    SOUTH_EAST = 0x6
+    SOUTH_WEST = 0x7
 
     NULL = 0x0
     INVALID = 0x1

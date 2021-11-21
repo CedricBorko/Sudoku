@@ -8,7 +8,8 @@ from PySide6.QtCore import Qt, QRect, QPoint, QSize
 from PySide6.QtGui import QPainter, QPen, QColor, QFont
 
 from constraints.border_components import Component
-from sudoku_.sudoku import Cell, tile_to_poly
+from sudoku_.sudoku import Cell
+from sudoku_.edge import tile_to_poly
 from utils import BoundList, sum_first_n, n_digit_sums, Constants
 
 
@@ -28,7 +29,7 @@ class RegionComponent(Component, ABC):
                 return False
         return True
 
-    def get_orthogonals(self):
+    def get_neighbours(self):
         return list(itertools.chain.from_iterable(
             [[index for index in cell.neighbours] for cell in self.cells]))
 

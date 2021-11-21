@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import math
 import random
 import time
 from typing import List
@@ -18,7 +19,7 @@ from constraints.line_components import Arrow, LineComponent, PalindromeLine, Ge
 from constraints.outside_components import Sandwich, XSumsClue, LittleKiller, OutsideComponent
 from constraints.region_components import RegionComponent, Cage
 from sudoku_.sudoku import Sudoku
-from sudoku_.sudoku import tile_to_poly
+from sudoku_.edge import tile_to_poly
 from utils import BoundList, Constants
 import sudoku_.board as b
 
@@ -126,7 +127,7 @@ class SudokuBoard(QWidget):
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         self.setFixedWidth(self.height())
-        self.cell_size = self.height() // 11
+        self.cell_size = self.height() // (self.sudoku.size + 2)
         self.update()
 
     def set_speed(self):
@@ -197,7 +198,7 @@ class SudokuBoard(QWidget):
         painter.setRenderHint(QPainter.TextAntialiasing)
         painter.drawRect(self.rect())
 
-        grid_size = self.cell_size * 9
+        grid_size = self.cell_size * self.sudoku.size
 
         painter.fillRect(QRect(self.cell_size, self.cell_size, grid_size, grid_size),
                          QColor("#FFF"))
@@ -239,7 +240,7 @@ class SudokuBoard(QWidget):
             c = self.sudoku.cells[next(iter(self.selected))]
 
             if c.value != 0:
-                for cell in self.sudoku.sees(c.index):
+                for cell in c.sees:
 
                     if cell != c:
                         painter.fillRect(cell.rect(self.cell_size), QColor(245, 230, 39, 69))
@@ -270,49 +271,23 @@ class SudokuBoard(QWidget):
             )
         )
 
-        painter.drawLine(
-            self.cell_size,
-            self.cell_size + grid_size // 3,
-            self.cell_size * 10,
-            self.cell_size + grid_size // 3
-        )
+        for i in range(self.sudoku.size):
+            painter.setPen(QPen(QColor("#000"), 1.0))
+            if i % (self.sudoku.size // (math.sqrt(self.sudoku.size))) == 0:
+                painter.setPen(QPen(QColor("#000"), 4.0))
 
-        painter.drawLine(
-            self.cell_size,
-            self.cell_size + grid_size // 3 * 2,
-            self.cell_size * 10,
-            self.cell_size + grid_size // 3 * 2
-        )
-
-        painter.drawLine(
-            self.cell_size + grid_size // 3,
-            self.cell_size,
-            self.cell_size + grid_size // 3,
-            self.cell_size * 10
-        )
-        painter.drawLine(
-            self.cell_size + grid_size // 3 * 2,
-            self.cell_size,
-            self.cell_size + grid_size // 3 * 2,
-            self.cell_size * 10
-        )
-
-        painter.setPen(QPen(QColor("#000"), 1.0))
-
-        for num in [1, 2, 4, 5, 7, 8]:
             painter.drawLine(
                 self.cell_size,
-                self.cell_size + grid_size // 9 * num,
-                self.cell_size * 10,
-                self.cell_size + grid_size // 9 * num
+                self.cell_size + i * self.cell_size,
+                self.cell_size * (self.sudoku.size + 1),
+                self.cell_size + i * self.cell_size,
             )
 
-        for num in [1, 2, 4, 5, 7, 8]:
             painter.drawLine(
-                self.cell_size + grid_size // 9 * num,
+                self.cell_size + i * self.cell_size,
                 self.cell_size,
-                self.cell_size + grid_size // 9 * num,
-                self.cell_size * 10
+                self.cell_size + i * self.cell_size,
+                self.cell_size * (self.sudoku.size + 1),
             )
 
         # INDICATE CELLS SEEN BY SINGLE SELECTED CELL
@@ -659,7 +634,7 @@ class SudokuBoard(QWidget):
 
             case RegionComponent() if not outside_grid:
 
-                if (new_location in self.selected_component.get_orthogonals()
+                if (new_location in self.selected_component.get_neighbours()
                     and self.selected_component.valid_location(new_location)):
                     self.selected_component.indices.append(new_location)
 
@@ -891,4 +866,4 @@ class SudokuBoard(QWidget):
     def is_orthogonal(self, location: int, lst: List[int]):
         if len(lst) <= 1:
             return True
-        return location in [c.index for c in self.sudoku.get_king_neighbours(lst[-1])]
+        return location in [c.index for c in self.sudoku.get_cell(lst[-1]).neighbours]

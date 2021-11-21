@@ -28,16 +28,16 @@ class OutsideComponent(Component):
     @property
     def cells(self) -> List[Cell]:
         if self.col == 0:
-            return self.sudoku.get_entire_row((self.row - 1) * 9)
+            return self.sudoku.get_row((self.row - 1) * 9)
 
         if self.col == 10:
-            return self.sudoku.get_entire_row((self.row - 1) * 9)[::-1]
+            return self.sudoku.get_row((self.row - 1) * 9)[::-1]
 
         if self.row == 0:
-            return self.sudoku.get_entire_column((self.col - 1) % 9)
+            return self.sudoku.get_column((self.col - 1) % 9)
 
         if self.row == 10:
-            return self.sudoku.get_entire_column((self.col - 1) % 9)[::-1]
+            return self.sudoku.get_column((self.col - 1) % 9)[::-1]
 
     @property
     def values(self):
@@ -540,10 +540,10 @@ class Sandwich(OutsideComponent):
     def cells(self) -> List[Cell]:
 
         if self.col in (0, 10):
-            return self.sudoku.get_entire_row((self.row - 1) * 9)
+            return self.sudoku.get_row((self.row - 1) * 9)
 
         if self.row in (0, 10):
-            return self.sudoku.get_entire_column((self.col - 1) % 9)
+            return self.sudoku.get_column((self.col - 1) % 9)
 
     def index_between(self, pos: int):
         first = min(self.values.index(1), self.values.index(9))

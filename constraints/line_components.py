@@ -511,7 +511,7 @@ class Arrow(LineComponent):
                 for other in branch:
                     if cell == other:
                         continue
-                    if other not in self.sudoku.sees(cell.index):
+                    if other not in cell.sees:
                         return False
         return True
 
@@ -527,7 +527,7 @@ class Arrow(LineComponent):
 
             # In Case Arrow is just one extra Cell (Bulb and Tip)
             if len(self.cells) == 2:
-                return self.cells[1] not in self.sudoku.get_orthogonals(index)
+                return self.cells[1] not in self.sudoku.get_cell(index).orthogonal_neighbours
 
             return True
 

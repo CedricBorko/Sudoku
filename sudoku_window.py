@@ -56,6 +56,7 @@ class SudokuWindow(QMainWindow):
         self.adding_component = False
 
         self.sudoku = Sudoku()
+
         # self.sudoku.from_file(file_path=r"C:\Users\Cedric\PycharmProjects\Sudoku\Files\puzzles\Thermodrome2.json")
 
         ############################################################################################

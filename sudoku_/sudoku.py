@@ -5,14 +5,13 @@ import itertools
 import os
 import random
 import time
-from collections import Counter
-from typing import List, Optional, Set, Dict, Tuple
+from typing import List, Dict, Tuple
 
 from PySide6.QtCore import QPoint, QRect, Qt, QObject
 from PySide6.QtGui import QPainter, QPolygon, QColor
 from PySide6.QtWidgets import QFileDialog
 
-from utils import StoppableThread, BoundList, Constants, LogicResult
+from utils import StoppableThread, BoundList, Constants
 
 
 class Cell:
@@ -27,13 +26,24 @@ class Cell:
         self.colors = BoundList(max_length=4, sort_=True)
         self.candidates = {1, 2, 3, 4, 5, 6, 7, 8, 9}
 
-        self.impossible_numbers = []
-
         self.edge_id = [0, 0, 0, 0]
         self.edge_exists = [False, False, False, False]
 
+    def __repr__(self):
+        return f"Cell({self.index}, {self.value})"
+
+    def __lt__(self, other):
+        return self.value < other.value
+
+    def __le__(self, other):
+        return self.value <= other.value
+
     @property
     def coordinates(self) -> str:
+        """
+
+        :return: E.G. R1C2 -> Cell in row 1 column 2
+        """
         return f"R{self.row + 1}C{self.column + 1}"
 
     @property
@@ -54,6 +64,52 @@ class Cell:
     def is_empty(self):
         return self.value == Constants.EMPTY
 
+    @property
+    def orthogonal_neighbours(self) -> List[Cell]:
+        """
+
+        :return: A List of the up to 4 orthogonal neighbouring cells
+        """
+        return [
+            self.sudoku.get_cell(self.index + offset)
+            for offset in (-9, -1, 1, 9) if self.sudoku.is_valid(self.index, offset)
+        ]
+
+    @property
+    def diagonal_neighbours(self) -> List[Cell]:
+        """
+
+        :return: A List of the up to 4 diagonal neighbouring cells
+        """
+        return [
+            self.sudoku.get_cell(self.index + offset)
+            for offset in (-10, -8, 8, 10) if self.sudoku.is_valid(self.index, offset)
+        ]
+
+    @property
+    def knight_neighbours(self) -> List[Cell]:
+        """
+
+        :return: A List of the up to 8 neighbouring cells that are a (chess) knights move away
+        """
+        return [
+            self.sudoku.get_cell(self.index + offset)
+            for offset in (-19, -17, -11, -7, 7, 11, 17, 19) if
+            self.sudoku.is_valid(self.index, offset)
+        ]
+
+    @property
+    def neighbours(self) -> List[Cell]:
+        """
+
+        :return: A List of the up to 8 neighbouring cells
+        """
+        return sorted(self.orthogonal_neighbours + self.diagonal_neighbours)
+
+    @property
+    def num_neighbours(self) -> int:
+        return len(self.neighbours)
+
     def rect(self, cell_size: int):
         return QRect(
             self.column * cell_size + cell_size,
@@ -71,55 +127,59 @@ class Cell:
             int(cell_size * factor)
         )
 
-    @property
-    def orthogonal_neighbours(self) -> List[Cell]:
-        return [
-            self.sudoku.get_cell(self.index + offset)
-            for offset in (-9, -1, 1, 9) if self.sudoku.is_valid(self.index, offset)
-        ]
-
-    @property
-    def diagonal_neighbours(self) -> List[Cell]:
-        return [
-            self.sudoku.get_cell(self.index + offset)
-            for offset in (-10, -8, 8, 10) if self.sudoku.is_valid(self.index, offset)
-        ]
-
-    @property
-    def knight_neighbours(self) -> List[Cell]:
-        return [
-            self.sudoku.get_cell(self.index + offset)
-            for offset in (-19, -17, -11, -7, 7, 11, 17, 19) if
-            self.sudoku.is_valid(self.index, offset)
-        ]
-
-    @property
-    def neighbours(self) -> List[Cell]:
-        return sorted(self.orthogonal_neighbours + self.diagonal_neighbours)
-
-    @property
-    def num_neighbours(self) -> int:
-        return len(self.neighbours)
-
-    def __repr__(self):
-        return f"Cell({self.index}, {self.value})"
-
     def reset(self):
         self.edge_id = [0, 0, 0, 0]
         self.edge_exists = [False, False, False, False]
 
-    def reset_values(self, skip_value: bool = False):
+    def reset_values(self, skip_value: bool = False) -> None:
+        """
+
+        :param skip_value: Some cells may have a givin digit that will not be erased.
+        """
         if not skip_value:
             self.value = Constants.EMPTY
+
         self.valid_numbers.clear()
         self.corner.clear()
         self.colors.clear()
 
-    def __lt__(self, other):
-        return self.value < other.value
+    @property
+    def sees(self):
+        """
 
-    def __le__(self, other):
-        return self.value <= other.value
+        :return: A List of cells that cannot contain the same digit as this cell
+        """
+
+        neighbours = self.zones
+
+        if self.sudoku.antiknight:
+            neighbours += self.knight_neighbours
+
+        if self.sudoku.antiking:
+            neighbours += self.neighbours
+
+        if self.sudoku.disjoint_groups:
+            neighbours += self.sudoku.get_disjoint_group(self.index)
+
+        if self.sudoku.diagonal_positive and self in (plus := self.sudoku.get_positive_diagonal()):
+            neighbours += plus
+
+        if self.sudoku.diagonal_negative and self in (neg := self.sudoku.get_negative_diagonal()):
+            neighbours += neg
+
+        return set(neighbours)
+
+    @property
+    def zones(self):
+        """
+
+        :return: All cells in the row, column and box
+        """
+        return (
+            self.sudoku.get_row(self.index)
+            + self.sudoku.get_column(self.index)
+            + self.sudoku.get_box(self.index)
+        )
 
     def draw_colors(self, painter: QPainter, cell_size: int):
         amount = len(self.colors)
@@ -287,207 +347,6 @@ class Cell:
                 self.colors.clear()
 
 
-class Edge:
-    def __init__(self, sx: int, sy: int, ex: int, ey: int, edge_type: int):
-        self.sx = sx
-        self.sy = sy
-        self.ex = ex
-        self.ey = ey
-
-        self.id_ = None
-        self.edge_type = edge_type
-
-    def __repr__(self):
-        return f"({self.sx}, {self.sy}) -> ({self.ex}, {self.ey})"
-
-    def draw(self, painter: QPainter, cell_size: int, offset: int):
-        if self.edge_type == Constants.NORTH:
-            painter.drawLine(
-                cell_size + self.sx + offset,
-                cell_size + self.sy + offset,
-                cell_size + self.ex - offset,
-                cell_size + self.ey + offset
-            )
-
-        elif self.edge_type == Constants.EAST:
-            painter.drawLine(
-                cell_size + self.sx - offset,
-                cell_size + self.sy + offset,
-                cell_size + self.ex - offset,
-                cell_size + self.ey - offset
-            )
-
-        elif self.edge_type == Constants.SOUTH:
-            painter.drawLine(
-                cell_size + self.sx + offset,
-                cell_size + self.sy - offset,
-                cell_size + self.ex - offset,
-                cell_size + self.ey - offset
-            )
-
-        else:
-            painter.drawLine(
-                cell_size + self.sx + offset,
-                cell_size + self.sy + offset,
-                cell_size + self.ex + offset,
-                cell_size + self.ey - offset
-            )
-
-
-def tile_to_poly(cells: List[Cell], cell_size: int, selected: Set, inner_offset: int):
-    edges = []
-
-    selected = {QPoint(i % 9, i // 9) for i in selected}
-
-    for cell in cells:
-        cell.reset()
-
-    for i in range(81):
-
-        p = get_point(i)
-        if p not in selected:
-            continue
-
-        north = QPoint(p.x(), p.y() - 1)
-        north_east = QPoint(p.x() + 1, p.y() - 1)
-
-        east = QPoint(p.x() + 1, p.y())
-        south_east = QPoint(p.x() + 1, p.y() + 1)
-
-        south = QPoint(p.x(), p.y() + 1)
-        south_west = QPoint(p.x() - 1, p.y() + 1)
-
-        west = QPoint(p.x() - 1, p.y())
-        north_west = QPoint(p.x() - 1, p.y() - 1)
-
-        if west not in selected:
-            if cells[get_index(north)].edge_exists[Constants.WEST]:
-
-                edges[cells[get_index(north)].edge_id[Constants.WEST]].ey += cell_size
-                cells[i].edge_id[Constants.WEST] = cells[get_index(north)].edge_id[Constants.WEST]
-                cells[i].edge_exists[Constants.WEST] = True
-
-            else:
-
-                sx = p.x() * cell_size
-                sy = p.y() * cell_size
-                ex, ey = sx, sy + cell_size
-                edge = Edge(sx, sy, ex, ey, Constants.WEST)
-
-                edge.id_ = len(edges)
-                edges.append(edge)
-
-                cells[i].edge_id[Constants.WEST] = edge.id_
-                cells[i].edge_exists[Constants.WEST] = True
-
-            # Fill the gap if a cell corner is shifted by a given offset
-
-            if south in selected and south_west in selected:
-                edges[cells[i].edge_id[Constants.WEST]].ey += inner_offset * 2
-
-            if north in selected and north_west in selected:
-                edges[cells[i].edge_id[Constants.WEST]].sy -= inner_offset * 2
-
-        if north not in selected:
-
-            if (cells[get_index(west)].edge_exists[Constants.NORTH]
-                and cells[get_index(p)].row == cells[
-                    get_index(west)].row):  # Don't connect to row above
-
-                edges[cells[get_index(west)].edge_id[Constants.NORTH]].ex += cell_size
-                cells[i].edge_id[Constants.NORTH] = cells[get_index(west)].edge_id[Constants.NORTH]
-                cells[i].edge_exists[Constants.NORTH] = True
-
-            else:
-                sx = p.x() * cell_size
-                sy = p.y() * cell_size
-                ex, ey = sx + cell_size, sy
-                edge = Edge(sx, sy, ex, ey, Constants.NORTH)
-
-                edge.id_ = len(edges)
-                edges.append(edge)
-
-                cells[i].edge_id[Constants.NORTH] = edge.id_
-                cells[i].edge_exists[Constants.NORTH] = True
-
-            # Fill the gap if a cell corner is shifted by a given offset
-
-            if east in selected and north_east in selected:
-                edges[cells[i].edge_id[Constants.NORTH]].ex += inner_offset * 2
-
-            if west in selected and north_west in selected:
-                edges[cells[i].edge_id[Constants.NORTH]].sx -= inner_offset * 2
-
-        if east not in selected:
-            if cells[get_index(north)].edge_exists[Constants.EAST]:
-                edges[cells[get_index(north)].edge_id[Constants.EAST]].ey += cell_size
-                cells[i].edge_id[Constants.EAST] = cells[get_index(north)].edge_id[Constants.EAST]
-                cells[i].edge_exists[Constants.EAST] = True
-
-            else:
-                sx = (1 + p.x()) * cell_size
-                sy = p.y() * cell_size
-                ex, ey = sx, sy + cell_size
-                edge = Edge(sx, sy, ex, ey, Constants.EAST)
-
-                edge.id_ = len(edges)
-                edges.append(edge)
-
-                cells[i].edge_id[Constants.EAST] = edge.id_
-                cells[i].edge_exists[Constants.EAST] = True
-
-            # Fill the gap if a cell corner is shifted by a given offset
-
-            if north in selected and north_east in selected:
-                edges[cells[i].edge_id[Constants.EAST]].sy -= inner_offset * 2
-
-            if south in selected and south_east in selected:
-                edges[cells[i].edge_id[Constants.EAST]].ey += inner_offset * 2
-
-        if south not in selected:
-            if (cells[get_index(west)].edge_exists[Constants.SOUTH]
-                and cells[get_index(p)].row == cells[
-                    get_index(west)].row):  # Don't connect to row above
-
-                edges[cells[get_index(west)].edge_id[Constants.SOUTH]].ex += cell_size
-                cells[i].edge_id[Constants.SOUTH] = cells[get_index(west)].edge_id[Constants.SOUTH]
-                cells[i].edge_exists[Constants.SOUTH] = True
-
-            else:
-                sx = p.x() * cell_size
-                sy = (1 + p.y()) * cell_size
-                ex, ey = sx + cell_size, sy
-                edge = Edge(sx, sy, ex, ey, Constants.SOUTH)
-
-                edge.id_ = len(edges)
-                edges.append(edge)
-
-                cells[i].edge_id[Constants.SOUTH] = edge.id_
-                cells[i].edge_exists[Constants.SOUTH] = True
-
-            # Fill the gap if a cell corner is shifted by a given offset
-
-            if east in selected and south_east in selected:
-                edges[cells[i].edge_id[Constants.SOUTH]].ex += inner_offset * 2
-
-            if west in selected and south_west in selected:
-                edges[cells[i].edge_id[Constants.SOUTH]].sx -= inner_offset * 2
-
-    return edges
-
-
-def get_index(p: QPoint) -> int:
-    return p.y() * 9 + p.x()
-
-
-def get_point(index: int) -> QPoint:
-    return QPoint(index % 9, index // 9)
-
-
-def valid(p: QPoint) -> bool:
-    return 0 <= p.y() * 9 + p.x() <= 81
-
-
 class Sudoku:
     NUMBERS = Constants.NUMBERS
 
@@ -523,7 +382,6 @@ class Sudoku:
         self.brute_force_time = 60
 
         for kw, value in kwargs.items():
-
             if kw in self.constraints:
                 setattr(self, kw, value)
 
@@ -538,6 +396,7 @@ class Sudoku:
     def __eq__(self, other):
         if isinstance(other, Sudoku):
             return self.to_string() == other.to_string()
+        return NotImplemented
 
     def to_string(self) -> str:
         return ''.join([str(c.value) for c in self.cells])
@@ -617,6 +476,36 @@ class Sudoku:
             or index // self.size == 0 and offset in (-10, -9, -8)
             or index // self.size == self.size - 1 and offset in (8, 9, 10)
         )
+
+    @property
+    def boxes(self):
+        """
+
+        :return: All boxes in the grid (every 3x3 area in a grid with width and height = 9)
+        """
+        first_box_index = []
+        offset = 0
+        for x in range(3):
+            first_box_index.extend([offset + i * self.size // 3 for i in range(3)])
+            offset += self.size * 3
+
+        return [self.get_box(i) for i in first_box_index]
+
+    @property
+    def rows(self):
+        """
+
+        :return: All rows in the grid
+        """
+        return [self.get_row(i) for i in range(0, self.size * self.size, self.size)]
+
+    @property
+    def columns(self):
+        """
+
+        :return: All columns in the grid
+        """
+        return [self.get_column(i) for i in range(self.size)]
 
     def get_row(self, index: int) -> List[Cell]:
         """
@@ -899,111 +788,12 @@ class Sudoku:
                and self.cells[index].is_empty
         ]
 
-    def valid(self, number: int, index: int, show_constraints: bool = False):
-
-        show_constraint = show_constraints
-
-        if self.disjoint_groups:
-            for cell in self.get_disjoint_cells(index):
-                if cell.value == number:
-                    return False
-
-        if self.antiking:
-            for cell in self.get_king_neighbours(index):
-
-                if cell.value == number:
-                    if show_constraint: print(number, "KINGS MOVE APART FROM", cell.value, "in",
-                                              cell.index)
-
-                    return False
-
-        if self.antiknight:
-            for cell in self.get_knight_neighbours(index):
-                if cell.value == number:
-                    if show_constraint: print(number, "KNIGHTS MOVE APART FROM", cell.value, "in",
-                                              cell.index)
-                    return False
-
-        if self.nonconsecutive:
-            consecutives = {number - 1, number + 1}.intersection({1, 2, 3, 4, 5, 6, 7, 8, 9})
-            for cell in self.get_orthogonals(index):
-                if cell.value in consecutives:
-
-                    if show_constraint:
-                        print(number, "CONSECUTIVE WITH", cell.value, "in", cell.index)
-                    return False
-
-        if self.diagonal_negative:
-            if index in [c.index for c in self.get_diagonal_top_left()]:
-
-                for cell in self.get_diagonal_top_left():
-
-                    if cell.value == number:
-                        if show_constraint:
-                            print(number, "TWICE ON DIAGONAL TOP LEFT")
-                        return False
-
-        if self.diagonal_positive:
-            if index in [c.index for c in self.get_diagonal_top_right()]:
-                for cell in self.get_diagonal_top_right():
-                    if cell.value == number:
-                        if show_constraint:
-                            print(number, "TWICE ON DIAGONAL TOP RIGHT")
-                        return False
-
-        for line in self.lines_components:
-            if not line.valid(index, number):
-                return False
-
-        for border_cmp in self.border_components:
-            if index not in border_cmp.indices: continue
-
-            if not border_cmp.valid(index, number):
-                return False
-
-        for out_cmp in self.outside_components:
-            if not out_cmp.valid(index, number):
-                return False
-
-        for reg_cmp in self.region_components:
-            if not reg_cmp.valid(index, number):
-                return False
-
-        for cell in self.get_entire_row(index):
-            if cell.value == number:
-                if show_constraint: print(number, "TWICE IN ROW", cell.row)
-                return False
-
-        for cell in self.get_entire_column(index):
-            if cell.value == number:
-                if show_constraint: print(number, "TWICE IN COLUMN", cell.column)
-                return False
-
-        for cell in self.get_entire_box(index):
-            if cell.value == number:
-                if show_constraint: print(number, "TWICE IN BOX")
-                return False
-
-        for cell_cmp in self.cell_components:
-            if index != cell_cmp.index:
-                continue
-
-            if not cell_cmp.valid(index, number):
-                return False
-
-        return True
-
-    def valid_numbers(self, index: int, show: bool = False):
-
-        return [number for number in self.NUMBERS if
-                self.valid(number, index) and self.cells[index].is_empty]
-
-    def all_valid_numbers(self):
-        return sorted([(index, self.valid_numbers(index)) for index in range(81)],
-                      key=lambda tpl: len(tpl[1]))
-
     @property
     def board_constraints(self):
+        """
+
+        :return: A List of all constraints that have been placed in the sudoku
+        """
         return itertools.chain.from_iterable(
             [
                 self.lines_components,
@@ -1016,6 +806,10 @@ class Sudoku:
 
     @property
     def constraints(self) -> Dict[str, bool]:
+        """
+
+        :return: A Dictionary of all base constraints (name: value (bool))
+        """
         return {
             "diagonal_positive": self.diagonal_positive,
             "diagonal_negative": self.diagonal_negative,
@@ -1198,159 +992,6 @@ class Sudoku:
                 match item["type"]:
                     case "Cage":
                         self.region_components.append(region_components.Cage.from_json(self, item))
-
-    @property
-    def boxes(self):
-        return [self.get_entire_box(i) for i in [0, 3, 6, 27, 30, 33, 54, 57, 60]]
-
-    @property
-    def rows(self):
-        return [self.get_row(i) for i in range(0, self.size * self.size, self.size)]
-
-    @property
-    def columns(self):
-        return [self.get_column(i) for i in range(self.size)]
-
-    def get_entire_row(self, index: int):
-
-        board_to_search = self.cells if self.solve_board else self.board_copy
-
-        row_start = index // 9 * 9
-        row_end = row_start + 9
-        return board_to_search[row_start:row_end]
-
-    def get_entire_column(self, index: int):
-        board_to_search = self.cells if self.solve_board else self.board_copy
-
-        col_start = index % 9
-        return [board_to_search[i] for i in range(col_start, col_start + 81, 9)]
-
-    def get_entire_box(self, index: int):
-        board_to_search = self.cells if self.solve_board else self.board_copy
-
-        cell = board_to_search[index]
-        box_x = cell.row // 3 * 3 * 9
-        box_y = cell.column // 3 * 3
-
-        start = box_x + box_y
-        box = [board_to_search[start + i * 9: start + 3 + i * 9] for i in range(3)]
-        return list(itertools.chain(*box))
-
-    def get_zones(self, index: int):
-        return self.get_entire_row(index) + self.get_entire_column(index) + self.get_entire_box(
-            index)
-
-    def get_king_neighbours(self, index: int):
-        board_to_search = self.cells if self.solve_board else self.board_copy
-
-        offsets = (-10, -9, -8, -1, 1, 8, 9, 10)
-        cell = board_to_search[index]
-        neighbours = []
-
-        for offset in offsets:
-
-            if index + offset > 80 or index + offset < 0:
-                continue
-
-            if cell.column == 0 and offset in (-10, -1, 8):
-                continue
-
-            if cell.column == 8 and offset in (-8, 1, 10):
-                continue
-
-            neighbours.append(board_to_search[index + offset])
-
-        return neighbours
-
-    def get_knight_neighbours(self, index: int):
-        board_to_search = self.cells if self.solve_board else self.board_copy
-
-        offsets = (-19, -17, -11, -7, 7, 11, 17, 19)
-        cell = board_to_search[index]
-        neighbours = []
-
-        for offset in offsets:
-
-            if index + offset > 80 or index + offset < 0:
-                continue
-
-            if cell.column == 0 and offset in (-19, -11, 7, 17):
-                continue
-
-            if cell.column == 1 and offset in (-11, 7):
-                continue
-
-            if cell.column == 7 and offset in (-7, 11):
-                continue
-
-            if cell.column == 8 and offset in (-17, -7, 11, 19):
-                continue
-
-            neighbours.append(board_to_search[index + offset])
-
-        return neighbours
-
-    def get_orthogonals(self, index: int):
-        board_to_search = self.cells if self.solve_board else self.board_copy
-
-        offsets = (-9, -1, 1, 9)
-        orthogonal = []
-        cell = board_to_search[index]
-
-        for offset in offsets:
-            if index + offset > 80 or index + offset < 0:
-                continue
-
-            if cell.column == 0 and offset == -1:
-                continue
-
-            if cell.column == 8 and offset == 1:
-                continue
-
-            orthogonal.append(board_to_search[index + offset])
-
-        return orthogonal
-
-    def get_diagonal_top_left(self):
-        board_to_search = self.cells if self.solve_board else self.board_copy
-
-        return [board_to_search[i * 10] for i in range(9)]
-
-    def get_diagonal_top_right(self):
-        board_to_search = self.cells if self.solve_board else self.board_copy
-
-        return [board_to_search[i * 8] for i in range(1, 10)]
-
-    def get_disjoint_cells(self, index: int):
-        this_box = self.get_entire_box(index)
-        box_index = [cell.index for cell in this_box].index(index)
-
-        return [box[box_index] for box in self.boxes]
-
-    def sees(self, index: int):
-
-        cell = self.cells[index]
-
-        neighbours = list(itertools.chain.from_iterable(
-            [self.get_row(index), self.get_column(index), self.get_box(index)]
-        ))
-
-        if self.antiknight:
-            neighbours += cell.knight_neighbours
-
-        if self.antiking:
-            neighbours += cell.neighbours
-
-        if self.disjoint_groups:
-            neighbours += self.get_disjoint_group(index)
-
-        if self.diagonal_positive and cell in (plus := self.get_positive_diagonal()):
-            neighbours += plus
-
-        if self.diagonal_negative and cell in (neg := self.get_negative_diagonal()):
-            neighbours += neg
-
-        return set(neighbours)
 
     def look_for_pairs(self, cells: List[Cell]):
         nothing_found = False
