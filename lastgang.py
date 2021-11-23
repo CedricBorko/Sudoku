@@ -24,6 +24,7 @@ STYLES = (
     "seaborn"
 )
 
+
 class Lastgang:
 
     def __init__(self, path: os.PathLike | str, is_kw: bool = True, year: int = 2020):
@@ -162,9 +163,14 @@ class Lastgang:
         axis.xaxis.set_major_locator(mdates.MonthLocator())
         axis.xaxis.set_major_formatter(mdates.DateFormatter("%B"))
 
+        max_x = self.df["Leistung"].idxmax()
+
         x = [self.get_timestamp(i) for i in range(self.measure_points())]
+        y2 = np.full(self.measure_points(), np.nan)
+        y2[max_x] = self.maximum
 
         axis.plot(x, self.df["Leistung"], c="#008F9B")
+        axis.plot(x, y2, 'ro', markersize=8.0)
 
         figure.figimage(plt.imread("logo.png"), 100, 100, alpha=.5, zorder=1)
         plt.xticks(rotation=45)
@@ -173,7 +179,7 @@ class Lastgang:
 
     def plot_leistungskurve(self):
 
-        plt.style.use('seaborn-pastel')
+        plt.style.use('bmh')
 
         figure, axis = plt.subplots(1, 1, figsize=(16, 9))
 
@@ -219,7 +225,8 @@ class Lastgang:
         axis.set_xticklabels(list(map(str, range(0, 9000, 1000))))
 
         plt.text(3100, self.top_50()["Leistung"].min() + 25,
-                 f"Potenzial Peak Shaving: {locale.format_string('%.0f', self.peak_shaving(), True)} €", size=10,
+                 f"Potenzial Peak Shaving: {locale.format_string('%.0f', self.peak_shaving(), True)} €",
+                 size=10,
                  ha="center", va="center",
                  bbox=dict(boxstyle="round",
                            ec=(1., 1., 1.),
@@ -227,6 +234,8 @@ class Lastgang:
 
                            )
                  )
+
+        figure.figimage(plt.imread("logo.png"), 100, 100, alpha=.5, zorder=1)
 
         plt.legend(loc='upper center', fancybox=True, shadow=True, ncol=5)
         plt.tight_layout()
@@ -245,4 +254,5 @@ def timer(func):
 
 if __name__ == '__main__':
     lg = Lastgang(path=r"C:\Users\Cedric\Desktop\meissen.csv")
-    lg.plot_leistungskurve()
+    lg.plot_lastgang()
+    # lg.plot_leistungskurve()
