@@ -1,5 +1,6 @@
 import itertools
 import locale
+import random
 
 locale.setlocale(locale.LC_ALL, 'de_DE')
 import datetime
@@ -11,6 +12,11 @@ import pandas as pd
 import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib.dates as mdates
+import sys
+
+from PySide6.QtCore import Qt, QDate
+from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton, \
+    QCalendarWidget
 
 # LP = 116.15
 LP = 11.51
@@ -206,6 +212,11 @@ class Lastgang:
     def top_50(self) -> pd.Series:
         return self.df.nlargest(50, columns="Leistung")
 
+    @property
+    def date_max(self) -> datetime.datetime:
+        idx = self.df["Leistung"].idxmax()
+        return self.df["Zeit"].iloc[idx]
+
     def calc_day_time_mean(self) -> List[float]:
         import multiprocessing as mp
         pool = mp.Pool(mp.cpu_count())
@@ -275,6 +286,8 @@ class Lastgang:
         axis.xaxis.set_major_formatter(mdates.DateFormatter("%B"))
 
         max_x = self.df["Leistung"].idxmax()
+        date_ = self.df["Zeit"].iloc[max_x].strftime("%d. %B %Y")
+        time_ = self.df["Zeit"].iloc[max_x].strftime("%H:%M:%S")
 
         x = [self.get_timestamp(i) for i in range(self.measure_points())]
         y2 = np.full(self.measure_points(), np.nan)
@@ -283,7 +296,7 @@ class Lastgang:
 
         axis.axhline(self.base_load, label="Grundlast", ls=":", c="#646464")
         axis.plot(x, self.df["Leistung"], c="#008F9B", label="Lastgang")
-        axis.plot(x, y2, 'ro', markersize=8.0, label=f"Maximum {self.maximum} {self.unit}")
+        axis.plot(x, y2, 'ro', markersize=8.0, label=f"Maximum {self.maximum} {self.unit} am {date_} um {time_}")
 
         figure.figimage(plt.imread("logo.png"), 0, 0, alpha=.5, zorder=1)
         plt.legend(loc='upper center', fancybox=True, shadow=True, ncol=3)
@@ -390,6 +403,70 @@ class Lastgang:
         plt.legend(loc='upper right', fancybox=True, shadow=True, ncol=1)
         plt.tight_layout()
 
+    def plot_day(self, day: datetime.date):
+        from scipy.interpolate import make_interp_spline
+
+        plt.style.use('bmh')
+
+        # fivethirtyeight
+        figure, axis = plt.subplots(figsize=(16, 9))
+
+        data = self.df[self.df["Zeit"].dt.date == day]
+
+        axis.set_title(f"Lastgang {day.strftime('%d. %B %Y')}", loc="center")
+        axis.set_ylabel("Leistung [kW]")
+
+        axis.xaxis.set_major_locator(mdates.HourLocator(interval=1))
+        axis.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+        max_y = data["Leistung"].max()
+        max_x = data["Leistung"].to_list().index(max_y)
+        time_ = data["Zeit"].iloc[max_x].strftime("%H:%M:%S")
+
+        y = np.full(len(data["Zeit"]), np.nan)
+        y[max_x] = max(data["Leistung"])
+        axis.set_facecolor((1.0, 1.0, 1.0))
+
+        axis.plot(data["Zeit"], data["Leistung"], c="#008F9B", label="Lastgang")
+        axis.plot(data["Zeit"], y, 'ro', markersize=8.0, label=f"Maximum {max_y} {self.unit} um {time_}")
+
+        figure.figimage(plt.imread("logo.png"), 0, 0, alpha=.5, zorder=1)
+        plt.legend(fancybox=True, shadow=True, ncol=3)
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+
+    def plot_month(self, month: int):
+        from scipy.interpolate import make_interp_spline
+
+        plt.style.use('bmh')
+
+        # fivethirtyeight
+        figure, axis = plt.subplots(figsize=(16, 9))
+        axis.set_title(f"Lastgang {datetime.date(self.year, month, 1).strftime('%B')}", loc="center")
+        axis.set_ylabel("Leistung [kW]")
+
+        data = self.df[(self.df["Zeit"].dt.month == month) & (self.df["Zeit"].dt.year == self.year)]
+
+        axis.xaxis.set_major_locator(mdates.DayLocator(interval=1))
+        axis.xaxis.set_major_formatter(mdates.DateFormatter("%d"))
+
+        max_y = data["Leistung"].max()
+        max_x = data["Leistung"].to_list().index(max_y)
+        date_ = data["Zeit"].iloc[max_x].strftime("%d. %B %Y")
+        time_ = data["Zeit"].iloc[max_x].strftime("%H:%M:%S")
+
+        y = np.full(len(data["Zeit"]), np.nan)
+        y[max_x] = max(data["Leistung"])
+        axis.set_facecolor((1.0, 1.0, 1.0))
+
+        axis.plot(data["Zeit"], data["Leistung"], c="#008F9B", label="Lastgang")
+        axis.plot(data["Zeit"], y, 'ro', markersize=8.0, label=f"Maximum {max_y} {self.unit} am {date_} um {time_}")
+
+        figure.figimage(plt.imread("logo.png"), 0, 0, alpha=.5, zorder=1)
+        plt.legend(fancybox=True, shadow=True, ncol=3)
+
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+
 
 def timer(func):
     def wrapper(*args, **kwargs):
@@ -401,9 +478,55 @@ def timer(func):
     return wrapper
 
 
+class Window(QMainWindow):
+    def __init__(self):
+        super().__init__()
+
+        self.cw = QWidget()
+        self.setCentralWidget(self.cw)
+
+        self.cl = QVBoxLayout(self.cw)
+
+        self.btn = QPushButton("Plot Day")
+        self.btn2 = QPushButton("Plot Month")
+        self.btn3 = QPushButton("Plot All")
+        self.cal_w = QCalendarWidget()
+
+        self.cl.addWidget(self.btn)
+        self.cl.addWidget(self.btn2)
+        self.cl.addWidget(self.btn3)
+
+        self.cl.addWidget(self.cal_w)
+
+        self.lg_ = Lastgang(path="meissen.csv")
+        self.cal_w.setSelectedDate(QDate(self.lg_.year, 1, 1))
+        self.btn.clicked.connect(self.plot_day)
+        self.btn2.clicked.connect(self.plot_month)
+        self.btn3.clicked.connect(self.plot_all)
+
+    def plot_day(self):
+        y, m, d = self.cal_w.selectedDate().year(), self.cal_w.selectedDate().month(), self.cal_w.selectedDate().day()
+        self.lg_.plot_day(datetime.date(y, m, d))
+        plt.show()
+
+    def plot_month(self):
+        self.lg_.plot_month(self.cal_w.monthShown())
+        plt.show()
+
+    def plot_all(self):
+        self.lg_.plot_lastgang()
+        self.lg_.plot_leistungskurve()
+        # self.lg_.plot_flexibilisierung()
+        plt.show()
+
+
+def main():
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
+    app = QApplication(sys.argv)
+    window = Window()
+    window.show()
+    sys.exit((app.exec()))
+
+
 if __name__ == '__main__':
-    lg = Lastgang(path="meissen.csv")
-    lg.plot_lastgang()
-    # lg.plot_leistungskurve()
-    #lg.plot_flexibilisierung()
-    plt.show()
+    main()
