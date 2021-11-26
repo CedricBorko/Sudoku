@@ -1,6 +1,7 @@
 import itertools
 import locale
-import random
+
+import tqdm
 
 locale.setlocale(locale.LC_ALL, 'de_DE')
 import datetime
@@ -12,11 +13,6 @@ import pandas as pd
 import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib.dates as mdates
-import sys
-
-from PySide6.QtCore import Qt, QDate
-from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton, \
-    QCalendarWidget
 
 # LP = 116.15
 LP = 11.51
@@ -53,22 +49,31 @@ class Lastgang:
         self.unit = "kW" if self.is_kw else "kWh"
         self.start_datetime = self.df["Zeit"].iloc[0]
 
+        self.step = 1
+        self.day = 0
+        self.hour = 0
+
     def __repr__(self):
         return f"Lastgang für das Jahr {self.year}."
 
     def show(self):
-        print(f"Mittelwert {self.mean} {self.unit}")
-        print(f"Mittlere Abweichung: {self.mad} {self.unit}")
-        print(f"Spitzenlast: {self.top_load} {self.unit}")
-        print(f"Grundlast: {self.base_load} {self.unit}")
-        print(f"Maximum: {self.maximum} {self.unit}")
-        print(f"Minimum: {self.minimum} {self.unit}")
-        print(f"Work: {self.work} kWh")
-        print(f"Hours: {self.hours} h")
+        return (
+            f"Mittelwert {locale.format_string('%.0f', self.mean, True)} {self.unit}\n"
+            f"Mittlere Abweichung: {locale.format_string('%.0f', self.mad, True)} {self.unit}\n"
+            f"Spitzenlast: {locale.format_string('%.0f', self.top_load, True)} {self.unit}\n"
+            f"Grundlast: {locale.format_string('%.0f', self.base_load, True)} {self.unit}\n"
+            f"Maximum: {locale.format_string('%.0f', self.maximum, True)} {self.unit}\n"
+            f"Minimum: {locale.format_string('%.0f', self.minimum, True)} {self.unit}\n"
+            f"Work: {locale.format_string('%.0f', self.work, True)} kWh\n"
+            f"Hours: {locale.format_string('%.0f', self.hours, True)} h\n"
+        )
 
     @staticmethod
     def format_date(date_):
         return date_.strftime("%A %d. %B %Y %H:%M:%S")
+
+    def format_value(self, value):
+        return locale.format_string('%.0f', value, True) + f" {self.unit}"
 
     def get_timestamp(self, index: int) -> datetime.datetime:
         """
@@ -194,6 +199,7 @@ class Lastgang:
 
     def weekday_time_mean(self, weekday: int = 0,
                           ts: datetime.time = datetime.time(0, 0, 0)) -> float:
+        self.hour += 3
         return round(self.get_rows_for_day_and_time(weekday, ts)["Leistung"].mean())
 
     def weekday_time_max(self, weekday: int = 0,
@@ -220,9 +226,9 @@ class Lastgang:
     def calc_day_time_mean(self) -> List[float]:
         import multiprocessing as mp
         pool = mp.Pool(mp.cpu_count())
-        return pool.starmap(self.weekday_time_mean,
+        return pool.starmap_async(self.weekday_time_mean,
                             [(i, self.time_stamps()[x]) for i in range(7) for x in
-                             range(len(self.time_stamps()))])
+                             range(len(self.time_stamps()))]).get()
 
     def calc_day_time_mean_split(self) -> List[List[float]]:
         return [self.__calc_day_time_mean_split(i) for i in range(7)]
@@ -296,10 +302,11 @@ class Lastgang:
 
         axis.axhline(self.base_load, label="Grundlast", ls=":", c="#646464")
         axis.plot(x, self.df["Leistung"], c="#008F9B", label="Lastgang")
-        axis.plot(x, y2, 'ro', markersize=8.0, label=f"Maximum {self.maximum} {self.unit} am {date_} um {time_}")
+        axis.plot(x, y2, 'ro', markersize=8.0,
+                  label=f"Maximum {self.maximum} {self.unit} am {date_} um {time_}")
 
         figure.figimage(plt.imread("logo.png"), 0, 0, alpha=.5, zorder=1)
-        plt.legend(loc='upper center', fancybox=True, shadow=True, ncol=3)
+        plt.legend(loc="upper center", fancybox=True, shadow=True, ncol=3)
 
         plt.xticks(rotation=45)
         plt.tight_layout()
@@ -353,10 +360,20 @@ class Lastgang:
 
         figure.figimage(plt.imread("logo.png"), 0, 0, alpha=.7, zorder=1)
 
-        plt.legend(loc='upper center', fancybox=True, shadow=True, ncol=5)
+        plt.legend(loc="upper right", fancybox=True, shadow=True, ncol=1)
         plt.tight_layout()
 
-    def plot_flexibilisierung(self):
+    def calc_flexibiliserung(self, loader: "Loader"):
+        y1 = self.calc_day_time_mean()  # 7 * 96 steps
+        loader.progressChanged.emit(1, 33.)
+        y2 = self.calc_day_time_max()  # 7 * 96 steps
+        loader.progressChanged.emit(2, 66.)
+        y3 = self.calc_day_time_min()  # 7 * 96 steps
+        loader.progressChanged.emit(3, 100.)
+        return y1, y2, y3
+
+    def plot_flexibilisierung(self, day_time_mean: List[float], day_time_max: List[float],
+                              day_time_min: List[float]):
         plt.style.use('bmh')
 
         # fivethirtyeight
@@ -367,9 +384,9 @@ class Lastgang:
 
         x = np.arange(96 * 7)
 
-        y1 = self.calc_day_time_mean()
-        y2 = self.calc_day_time_max()
-        y3 = self.calc_day_time_min()
+        y1 = day_time_mean
+        y2 = day_time_max
+        y3 = day_time_min
 
         axis.set_facecolor((1.0, 1.0, 1.0))
 
@@ -404,7 +421,6 @@ class Lastgang:
         plt.tight_layout()
 
     def plot_day(self, day: datetime.date):
-        from scipy.interpolate import make_interp_spline
 
         plt.style.use('bmh')
 
@@ -427,21 +443,20 @@ class Lastgang:
         axis.set_facecolor((1.0, 1.0, 1.0))
 
         axis.plot(data["Zeit"], data["Leistung"], c="#008F9B", label="Lastgang")
-        axis.plot(data["Zeit"], y, 'ro', markersize=8.0, label=f"Maximum {max_y} {self.unit} um {time_}")
+        axis.plot(data["Zeit"], y, 'ro', markersize=8.0,
+                  label=f"Maximum {max_y} {self.unit} um {time_}")
 
         figure.figimage(plt.imread("logo.png"), 0, 0, alpha=.5, zorder=1)
-        plt.legend(fancybox=True, shadow=True, ncol=3)
+        plt.legend(loc="upper right", fancybox=True, shadow=True, ncol=1)
         plt.xticks(rotation=45)
         plt.tight_layout()
 
     def plot_month(self, month: int):
-        from scipy.interpolate import make_interp_spline
-
         plt.style.use('bmh')
-
         # fivethirtyeight
         figure, axis = plt.subplots(figsize=(16, 9))
-        axis.set_title(f"Lastgang {datetime.date(self.year, month, 1).strftime('%B')}", loc="center")
+        axis.set_title(f"Lastgang {datetime.date(self.year, month, 1).strftime('%B')}",
+                       loc="center")
         axis.set_ylabel("Leistung [kW]")
 
         data = self.df[(self.df["Zeit"].dt.month == month) & (self.df["Zeit"].dt.year == self.year)]
@@ -459,10 +474,11 @@ class Lastgang:
         axis.set_facecolor((1.0, 1.0, 1.0))
 
         axis.plot(data["Zeit"], data["Leistung"], c="#008F9B", label="Lastgang")
-        axis.plot(data["Zeit"], y, 'ro', markersize=8.0, label=f"Maximum {max_y} {self.unit} am {date_} um {time_}")
+        axis.plot(data["Zeit"], y, 'ro', markersize=8.0,
+                  label=f"Maximum {max_y} {self.unit} am {date_} um {time_}")
 
         figure.figimage(plt.imread("logo.png"), 0, 0, alpha=.5, zorder=1)
-        plt.legend(fancybox=True, shadow=True, ncol=3)
+        plt.legend(loc="upper right", fancybox=True, shadow=True, ncol=1)
 
         plt.xticks(rotation=45)
         plt.tight_layout()
@@ -478,55 +494,5 @@ def timer(func):
     return wrapper
 
 
-class Window(QMainWindow):
-    def __init__(self):
-        super().__init__()
-
-        self.cw = QWidget()
-        self.setCentralWidget(self.cw)
-
-        self.cl = QVBoxLayout(self.cw)
-
-        self.btn = QPushButton("Plot Day")
-        self.btn2 = QPushButton("Plot Month")
-        self.btn3 = QPushButton("Plot All")
-        self.cal_w = QCalendarWidget()
-
-        self.cl.addWidget(self.btn)
-        self.cl.addWidget(self.btn2)
-        self.cl.addWidget(self.btn3)
-
-        self.cl.addWidget(self.cal_w)
-
-        self.lg_ = Lastgang(path="meissen.csv")
-        self.cal_w.setSelectedDate(QDate(self.lg_.year, 1, 1))
-        self.btn.clicked.connect(self.plot_day)
-        self.btn2.clicked.connect(self.plot_month)
-        self.btn3.clicked.connect(self.plot_all)
-
-    def plot_day(self):
-        y, m, d = self.cal_w.selectedDate().year(), self.cal_w.selectedDate().month(), self.cal_w.selectedDate().day()
-        self.lg_.plot_day(datetime.date(y, m, d))
-        plt.show()
-
-    def plot_month(self):
-        self.lg_.plot_month(self.cal_w.monthShown())
-        plt.show()
-
-    def plot_all(self):
-        self.lg_.plot_lastgang()
-        self.lg_.plot_leistungskurve()
-        # self.lg_.plot_flexibilisierung()
-        plt.show()
-
-
-def main():
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
-    app = QApplication(sys.argv)
-    window = Window()
-    window.show()
-    sys.exit((app.exec()))
-
-
 if __name__ == '__main__':
-    main()
+    lg = Lastgang("meissen.csv")

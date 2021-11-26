@@ -57,7 +57,6 @@ class Solver(QObject):
 
     def solve(self):
         self.sudoku.solve_in_thread(self, random_pick=True)
-
         self.finished.emit()
 
 
