@@ -6,9 +6,9 @@ from typing import List, Tuple
 from PySide6.QtCore import Qt, QRect, QPoint
 from PySide6.QtGui import QPainter, QPen, QColor, QFont
 
-from constraints.border_components import Component
-from sudoku_.sudoku import Cell
-from utils import n_digit_sums
+from alt.constraints.border_components import Component
+from alt.sudoku_.sudoku import Cell
+from alt.utils import n_digit_sums
 
 
 class OutsideComponent(Component):
@@ -20,10 +20,10 @@ class OutsideComponent(Component):
         self.total = total
 
     def __eq__(self, other):
-        return self.col == other.col and self.row == other.row
+        return self.col == other.col and self.row == other.get_entire_row
 
     def __lt__(self, other):
-        return (self.row * 11 + self.col) < (other.row * 11 + other.col)
+        return (self.row * 11 + self.col) < (other.get_entire_row * 11 + other.col)
 
     @property
     def cells(self) -> List[Cell]:
@@ -45,7 +45,7 @@ class OutsideComponent(Component):
 
     def get(self, col: int, row: int):
         for cmp in self.sudoku.outside_components:
-            if (cmp.col, cmp.row) == (col, row):
+            if (cmp.col, cmp.get_entire_row) == (col, row):
                 return cmp
 
     def setup(self, col: int, row: int):

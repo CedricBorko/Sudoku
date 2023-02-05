@@ -473,16 +473,16 @@ class SudokuBoard(QWidget):
 
                     if event.modifiers() == Qt.ShiftModifier:
 
-                        self.selected_component = self.current_component.get(location)
+                        self.selected_component = self.current_component.get_value(location)
                         if self.selected_component is None:
                             return
 
-                        self.selected = {self.selected_component.index}
+                        self.selected = {self.selected_component.hovered_cell}
                         self.update()
 
                         return
                     else:
-                        self.current_component.index = location
+                        self.current_component.hovered_cell = location
 
                         self.sudoku.cell_components.append(self.current_component)
                         self.selected_component = self.current_component
@@ -491,7 +491,7 @@ class SudokuBoard(QWidget):
                         self.current_component.clear()
                         self.window_.rule_view.add_rule(self.current_component.RULE)
 
-                        self.selected = {self.selected_component.index}
+                        self.selected = {self.selected_component.hovered_cell}
                         self.update()
                         return
 
@@ -509,7 +509,7 @@ class SudokuBoard(QWidget):
                         return
 
                     if event.modifiers() == Qt.ShiftModifier:
-                        self.selected_component = self.current_component.get(location)
+                        self.selected_component = self.current_component.get_value(location)
                         if not self.selected_component:
                             self.selected.clear()
                             return
@@ -540,7 +540,7 @@ class SudokuBoard(QWidget):
 
                 case RegionComponent() if not outside_grid:
                     if event.modifiers() == Qt.ShiftModifier:
-                        self.selected_component = self.current_component.get(location)
+                        self.selected_component = self.current_component.get_value(location)
 
                         if not self.selected_component:
                             return
@@ -800,7 +800,7 @@ class SudokuBoard(QWidget):
                 similar_cells = [selected_cell]
 
         for cell in similar_cells:
-            self.selected.add(cell.index)
+            self.selected.add(cell.hovered_cell)
 
         self.update()
 

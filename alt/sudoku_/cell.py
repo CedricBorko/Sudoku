@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import List
 
-from sudoku_.sudoku import Sudoku
-from utils import Constants
+from alt.sudoku_.sudoku import Sudoku
+from alt.utils import Constants
 
 
 class Cell:

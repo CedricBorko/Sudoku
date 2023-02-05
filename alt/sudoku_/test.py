@@ -1,6 +1,5 @@
 # sudoku solver using backtracking / recursion
 import copy
-import glob
 import math
 
 
@@ -121,7 +120,7 @@ def solveGrid(in_grid, depth):
     return solutions
 
 
-from sudoku_.board import Sudoku
+from alt.sudoku_.board import Sudoku
 
 s = Sudoku()
 s.generate_random_board()

@@ -2,12 +2,9 @@ from __future__ import annotations
 
 import copy
 import random
-from abc import ABC, abstractmethod
 from typing import List, Tuple
 
-from PySide6.QtCore import Qt
-
-from constraints__.constraint import LogicResult
+from alt.constraints__.constraint import LogicResult
 
 UP_LEFT = (-1, -1)
 UP_RIGHT = (-1, 1)

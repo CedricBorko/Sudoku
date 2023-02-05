@@ -11,7 +11,7 @@ from PySide6.QtCore import QPoint, QRect, Qt, QObject
 from PySide6.QtGui import QPainter, QPolygon, QColor
 from PySide6.QtWidgets import QFileDialog
 
-from utils import StoppableThread, BoundList, Constants
+from alt.utils import StoppableThread, BoundList, Constants
 
 
 class Cell:
@@ -768,7 +768,7 @@ class Sudoku:
                 return False
 
         for cell_cmp in self.cell_components:
-            if index != cell_cmp.index:
+            if index != cell_cmp.hovered_cell:
                 continue
 
             if not cell_cmp.valid(index, number):
@@ -863,7 +863,7 @@ class Sudoku:
     def from_file(self, file_path: str = None):
         import json
 
-        from constraints import border_components, cell_components, outside_components, \
+        from alt.constraints import border_components, cell_components, outside_components, \
             line_components, region_components
 
         if file_path is None:

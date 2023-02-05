@@ -5,9 +5,9 @@ from typing import List, Tuple, Optional
 from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QPolygon
 
-from constraints.border_components import Component
-from sudoku_.sudoku import Sudoku, Cell
-from utils import smallest_sum_including_x, sum_first_n, BoundList
+from alt.constraints.border_components import Component
+from alt.sudoku_.sudoku import Sudoku, Cell
+from alt.utils import smallest_sum_including_x, sum_first_n, BoundList
 
 
 class LineComponent(Component):
@@ -278,30 +278,30 @@ class Thermometer(LineComponent):
     def to_json(self):
         return {
             "type": self.__class__.__name__,
-            "index": self.bulb.index,
+            "index": self.bulb.hovered_cell,
             "branches": [[c.index for c in branch] for branch in self.branches]
         }
 
     def get(self, index: int):
         for cmp in self.sudoku.lines_components:
-            if isinstance(cmp, Thermometer) and cmp.bulb.index == index:
+            if isinstance(cmp, Thermometer) and cmp.bulb.hovered_cell == index:
                 return cmp
 
     def __eq__(self, other):
         if isinstance(other, Thermometer):
-            return self.bulb.index == other.bulb.index
+            return self.bulb.hovered_cell == other.bulb.hovered_cell
         return False
 
     def can_remove(self, index: int):
-        if len(self.current_branch) > 1 and index == self.current_branch[-2].index:
+        if len(self.current_branch) > 1 and index == self.current_branch[-2].hovered_cell:
             return True
         return False
 
     def valid_location(self, index: int) -> bool:
         return (
             index in self.sudoku.indices(self.current_branch[-1].neighbours)
-            and index != self.bulb.index
-            and index not in [c.index for c in self.current_branch]
+            and index != self.bulb.hovered_cell
+            and index not in [c.hovered_cell for c in self.current_branch]
             and len(self.current_branch) < 8
         )
 
@@ -315,13 +315,13 @@ class Thermometer(LineComponent):
         else:
             branch = None
 
-        if branch is None and index != self.bulb.index:
+        if branch is None and index != self.bulb.hovered_cell:
             return True
 
         if not self.branches:
             return True
 
-        if index == self.bulb.index:
+        if index == self.bulb.hovered_cell:
 
             if number > 9 - max([len(branch) for branch in self.branches]):
                 return False
@@ -431,7 +431,7 @@ class Arrow(LineComponent):
 
     def get(self, index: int):
         for cmp in self.sudoku.lines_components:
-            if isinstance(cmp, Arrow) and cmp.bulb.index == index:
+            if isinstance(cmp, Arrow) and cmp.bulb.hovered_cell == index:
                 return cmp
 
     @property
@@ -451,7 +451,7 @@ class Arrow(LineComponent):
         return f"{' -> '.join(map(str, self.cells))}"
 
     def sum_so_far(self):
-        return sum([c.value for c in self.cells[self.bulb.index:] if c.value != 0])
+        return sum([c.value for c in self.cells[self.bulb.hovered_cell:] if c.value != 0])
 
     def can_add_branch(self, index: int):
         return index in self.sudoku.indices(self.bulb.neighbours)
@@ -477,19 +477,19 @@ class Arrow(LineComponent):
     def valid_location(self, index: int) -> bool:
         return (
             index in self.sudoku.indices(self.current_branch[-1].neighbours)
-            and index != self.bulb.index
-            and index not in [c.index for c in self.current_branch]
+            and index != self.bulb.hovered_cell
+            and index not in [c.hovered_cell for c in self.current_branch]
         )
 
     def can_remove(self, index: int):
-        if len(self.current_branch) > 1 and index == self.current_branch[-2].index:
+        if len(self.current_branch) > 1 and index == self.current_branch[-2].hovered_cell:
             return True
         return False
 
     def to_json(self):
         return {
             "type": self.__class__.__name__,
-            "index": self.bulb.index,
+            "index": self.bulb.hovered_cell,
             "branches": [[c.index for c in branch] for branch in self.branches]
         }
 
@@ -516,7 +516,7 @@ class Arrow(LineComponent):
         return True
 
     def valid(self, index: int, number: int):
-        if index == self.bulb.index:
+        if index == self.bulb.hovered_cell:
 
             if self.unique:
                 return number >= sum_first_n(len(self.arrow_cells))
@@ -629,7 +629,7 @@ class BetweenLine(LineComponent):
     def get(self, index: int):
 
         for cmp in self.sudoku.lines_components:
-            if isinstance(cmp, BetweenLine) and cmp.bulb.index == index:
+            if isinstance(cmp, BetweenLine) and cmp.bulb.hovered_cell == index:
                 return cmp
 
     def can_add_branch(self, index: int):
@@ -638,7 +638,7 @@ class BetweenLine(LineComponent):
     def to_json(self):
         return {
             "type": self.__class__.__name__,
-            "index": self.bulb.index,
+            "index": self.bulb.hovered_cell,
             "branches": [[c.index for c in branch] for branch in self.branches]
         }
 
@@ -662,8 +662,8 @@ class BetweenLine(LineComponent):
     def valid_location(self, index: int) -> bool:
         return (
             index in self.sudoku.indices(self.current_branch[-1].neighbours)
-            and index != self.bulb.index
-            and index not in [c.index for c in self.current_branch]
+            and index != self.bulb.hovered_cell
+            and index not in [c.hovered_cell for c in self.current_branch]
         )
 
     def get_branch(self, index: int) -> List[Cell]:
@@ -680,7 +680,7 @@ class BetweenLine(LineComponent):
         return False
 
     def can_remove(self, index: int):
-        if len(self.current_branch) > 1 and index == self.current_branch[-2].index:
+        if len(self.current_branch) > 1 and index == self.current_branch[-2].hovered_cell:
             return True
         return False
 
@@ -691,10 +691,10 @@ class BetweenLine(LineComponent):
         else:
             branch = None
 
-        if branch is None and index != self.bulb.index:
+        if branch is None and index != self.bulb.hovered_cell:
             return True
 
-        if index == self.bulb.index:
+        if index == self.bulb.hovered_cell:
 
             for branch_ in self.branches:
                 end = branch_[-1]
@@ -772,14 +772,14 @@ class LockoutLine(LineComponent):
     def to_json(self):
         return {
             "type": self.__class__.__name__,
-            "index": self.bulb.index,
+            "index": self.bulb.hovered_cell,
             "branches": [[c.index for c in branch] for branch in self.branches]
         }
 
     def get(self, index: int):
 
         for cmp in self.sudoku.lines_components:
-            if isinstance(cmp, LockoutLine) and cmp.bulb.index == index:
+            if isinstance(cmp, LockoutLine) and cmp.bulb.hovered_cell == index:
                 return cmp
 
     @property
@@ -805,8 +805,8 @@ class LockoutLine(LineComponent):
     def valid_location(self, index: int) -> bool:
         return (
             index in self.sudoku.indices(self.current_branch[-1].neighbours)
-            and index != self.bulb.index
-            and index not in [c.index for c in self.current_branch]
+            and index != self.bulb.hovered_cell
+            and index not in [c.hovered_cell for c in self.current_branch]
         )
 
     def get_branch(self, index: int) -> List[Cell]:
@@ -823,7 +823,7 @@ class LockoutLine(LineComponent):
         return False
 
     def can_remove(self, index: int):
-        if len(self.current_branch) > 1 and index == self.current_branch[-2].index:
+        if len(self.current_branch) > 1 and index == self.current_branch[-2].hovered_cell:
             return True
         return False
 
@@ -834,10 +834,10 @@ class LockoutLine(LineComponent):
         else:
             branch = None
 
-        if branch is None and index != self.bulb.index:
+        if branch is None and index != self.bulb.hovered_cell:
             return True
 
-        if index == self.bulb.index:
+        if index == self.bulb.hovered_cell:
 
             for branch_ in self.branches:
                 end = branch_[-1]

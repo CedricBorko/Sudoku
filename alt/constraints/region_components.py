@@ -7,10 +7,10 @@ from typing import List, Dict
 from PySide6.QtCore import Qt, QRect, QPoint, QSize
 from PySide6.QtGui import QPainter, QPen, QColor, QFont
 
-from constraints.border_components import Component
-from sudoku_.sudoku import Cell
-from sudoku_.edge import tile_to_poly
-from utils import BoundList, sum_first_n, n_digit_sums, Constants
+from alt.constraints.border_components import Component
+from alt.sudoku_.sudoku import Cell
+from alt.sudoku_.edge import tile_to_poly
+from alt.utils import BoundList, sum_first_n, n_digit_sums, Constants
 
 
 class RegionComponent(Component, ABC):

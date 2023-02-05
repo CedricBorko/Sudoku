@@ -7,8 +7,8 @@ from typing import List, Dict
 from PySide6.QtCore import QPoint, QRect
 from PySide6.QtGui import QPainter, QBrush, QColor, QPen, QFont, Qt
 
-from sudoku_.sudoku import Sudoku, Cell
-from utils import BoundList
+from alt.sudoku_.sudoku import Sudoku, Cell
+from alt.utils import BoundList
 
 
 class Component(ABC):

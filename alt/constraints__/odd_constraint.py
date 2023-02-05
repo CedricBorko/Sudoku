@@ -2,8 +2,8 @@ from typing import Tuple, Dict
 
 from PySide6.QtGui import QPainter, QColor
 
-from constraints__.constraint import Constraint, LogicResult
-from sudoku_.sudoku import Cell
+from alt.constraints__.constraint import Constraint, LogicResult
+from alt.sudoku_.sudoku import Cell
 
 
 class OddConstraint(Constraint):

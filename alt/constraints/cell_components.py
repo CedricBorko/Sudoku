@@ -1,9 +1,7 @@
-from typing import List
-
 from PySide6.QtCore import Qt, QPoint
-from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QFont, QImage
+from PySide6.QtGui import QPainter, QColor, QBrush
 
-from constraints.border_components import Component, LessGreater
+from alt.constraints.border_components import Component
 
 
 class CellComponent(Component):
@@ -17,7 +15,7 @@ class CellComponent(Component):
         return f"{self.index}"
 
     def __eq__(self, other):
-        return self.index == other.index
+        return self.index == other.hovered_cell
 
     def to_json(self):
         return {
@@ -30,7 +28,7 @@ class CellComponent(Component):
 
     def get(self, index: int):
         for cmp in self.sudoku.cell_components:
-            if cmp.index == index:
+            if cmp.hovered_cell == index:
                 return cmp
 
 

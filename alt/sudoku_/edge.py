@@ -3,8 +3,8 @@ from typing import List, Set
 from PySide6.QtCore import QPoint
 from PySide6.QtGui import QPainter
 
-from sudoku_.sudoku import Cell
-from utils import Constants
+from alt.sudoku_.sudoku import Cell
+from alt.utils import Constants
 
 
 class Edge:
